@@ -1,0 +1,15 @@
+{
+  "name": "event-registration-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Software verification coursework starter with Playwright E2E tests.",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:smoke": "playwright test --grep @smoke",
+    "test:e2e:critical": "playwright test --grep @critical"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.1"
+  }
+}
+

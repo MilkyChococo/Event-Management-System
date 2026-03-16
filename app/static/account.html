@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Account | EventHub Verify</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="secondary-link" href="/dashboard">? Back to dashboard</a>
+        <div class="topbar-actions">
+          <div class="account-anchor">
+            <button class="account-trigger" data-testid="account-trigger" type="button" aria-label="Account">
+              <span data-testid="account-avatar">U</span>
+            </button>
+            <div class="account-menu hidden" data-testid="account-menu">
+              <p class="menu-name" data-testid="account-menu-name">User</p>
+              <p class="menu-email" data-testid="account-menu-email">email@example.com</p>
+              <a class="menu-link" data-testid="account-profile-link" href="/account">Account details</a>
+              <button class="menu-link danger-link" data-testid="account-logout" type="button">Sign out</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="page-shell account-page">
+        <section class="profile-header-card">
+          <div class="profile-avatar-large" data-testid="profile-avatar">U</div>
+          <div>
+            <p class="eyebrow">Account</p>
+            <h1 id="profile-name" data-testid="profile-name">Loading...</h1>
+            <p id="profile-email" class="hero-copy"></p>
+            <span id="profile-role" class="profile-role-chip">user</span>
+          </div>
+        </section>
+
+        <section class="page-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Detailed information</p>
+              <h2>User profile</h2>
+            </div>
+          </div>
+
+          <div class="profile-grid" data-testid="profile-grid">
+            <article class="profile-field">
+              <span>Full name</span>
+              <strong id="profile-name-field"></strong>
+            </article>
+            <article class="profile-field">
+              <span>Age</span>
+              <strong id="profile-age"></strong>
+            </article>
+            <article class="profile-field">
+              <span>Date of birth</span>
+              <strong id="profile-date-of-birth"></strong>
+            </article>
+            <article class="profile-field">
+              <span>Phone region</span>
+              <div class="profile-flag-row">
+                <span id="profile-phone-flag" class="flag-badge flag-vn" aria-hidden="true"></span>
+                <strong id="profile-phone-region"></strong>
+              </div>
+            </article>
+            <article class="profile-field">
+              <span>Phone number</span>
+              <strong id="profile-phone"></strong>
+            </article>
+            <article class="profile-field">
+              <span>Country</span>
+              <strong id="profile-country"></strong>
+            </article>
+            <article class="profile-field">
+              <span>Province / State</span>
+              <strong id="profile-province"></strong>
+            </article>
+            <article class="profile-field">
+              <span>District / County</span>
+              <strong id="profile-district"></strong>
+            </article>
+            <article class="profile-field">
+              <span>Ward / Area</span>
+              <strong id="profile-ward"></strong>
+            </article>
+            <article class="profile-field full-width-card">
+              <span>Street address</span>
+              <strong id="profile-street-address"></strong>
+            </article>
+            <article class="profile-field full-width-card">
+              <span>Permanent address</span>
+              <strong id="profile-address"></strong>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="/static/account.js"></script>
+  </body>
+</html>

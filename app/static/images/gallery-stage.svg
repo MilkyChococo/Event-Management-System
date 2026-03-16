@@ -1,0 +1,14 @@
+<svg width="1600" height="1000" viewBox="0 0 1600 1000" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1600" height="1000" fill="#092635"/>
+  <circle cx="250" cy="160" r="160" fill="#F4C95D" fill-opacity="0.74"/>
+  <circle cx="1370" cy="250" r="190" fill="#1B9AAA" fill-opacity="0.42"/>
+  <rect x="120" y="190" width="1360" height="650" rx="56" fill="#0E7490" fill-opacity="0.26"/>
+  <path d="M220 690L560 420L770 570L980 360L1380 690V820H220V690Z" fill="#0B3C49"/>
+  <rect x="680" y="220" width="240" height="360" rx="30" fill="#111827" fill-opacity="0.76"/>
+  <rect x="730" y="270" width="140" height="220" rx="20" fill="#F4C95D" fill-opacity="0.9"/>
+  <circle cx="430" cy="360" r="26" fill="#F0F4F8" fill-opacity="0.88"/>
+  <circle cx="520" cy="400" r="20" fill="#F0F4F8" fill-opacity="0.72"/>
+  <circle cx="1080" cy="430" r="24" fill="#F0F4F8" fill-opacity="0.84"/>
+  <circle cx="1170" cy="390" r="18" fill="#F0F4F8" fill-opacity="0.68"/>
+  <text x="180" y="902" fill="#F0F4F8" font-size="68" font-family="Trebuchet MS">Atmosphere Gallery: Stage</text>
+</svg>

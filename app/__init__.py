@@ -1,0 +1,2 @@
+"""Event registration application package."""
+

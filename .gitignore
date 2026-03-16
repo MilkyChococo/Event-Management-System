@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.db
+*.sqlite3
+.venv/
+venv/
+.env
+.pytest_cache/
+.mypy_cache/
+playwright-report/
+test-results/
+node_modules/
+dist/
+coverage/
+tests/.tmp/
+.uvicorn.pid

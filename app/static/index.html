@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sign In</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body class="auth-body">
+    <main class="auth-shell auth-shell-single">
+      <section class="auth-panel auth-panel-single">
+        <div class="auth-header">
+          <h1 id="auth-heading" class="auth-title">Sign in</h1>
+        </div>
+
+        <div id="auth-message" class="notice hidden" data-testid="auth-message"></div>
+
+        <section id="login-panel" class="tab-panel is-active" data-tab-panel>
+          <p class="subtle">Demo accounts: `student@example.com` or `admin@example.com`.</p>
+          <form id="login-form" class="form-grid">
+            <label>
+              Email
+              <input id="login-email" data-testid="login-email" type="email" required />
+            </label>
+            <label>
+              Password
+              <input id="login-password" data-testid="login-password" type="password" minlength="8" required />
+            </label>
+            <div id="login-inline-error" class="inline-error hidden" data-testid="login-inline-error"></div>
+            <button class="primary-button" data-testid="login-submit" type="submit">Open dashboard</button>
+          </form>
+          <div class="auth-inline-links" role="tablist" aria-label="Authentication shortcuts">
+            <button class="panel-link-button" data-tab-target="forgot-panel" type="button">Forgot password</button>
+            <button class="panel-link-button" data-tab-target="register-panel" type="button">Sign up</button>
+          </div>
+        </section>
+
+        <section id="register-panel" class="tab-panel" data-tab-panel>
+          <div class="panel-toolbar">
+            <h2>Create an account</h2>
+            <button class="panel-link-button" data-tab-target="login-panel" type="button">Back to sign in</button>
+          </div>
+          <form id="register-form" class="form-grid two-columns">
+            <label>
+              Full name
+              <input id="register-name" type="text" required />
+            </label>
+            <label>
+              Date of birth
+              <input id="register-date-of-birth" type="date" required />
+            </label>
+            <label>
+              Country
+              <select id="register-country" required></select>
+            </label>
+            <label>
+              Province / State
+              <select id="register-province" required></select>
+            </label>
+            <label>
+              District / County
+              <select id="register-district" required></select>
+            </label>
+            <label>
+              Ward / Area
+              <select id="register-ward"></select>
+            </label>
+            <label class="full-width">
+              Street address
+              <input id="register-street-address" type="text" placeholder="House number, street, apartment" required />
+            </label>
+            <div class="phone-entry-row full-width">
+              <label>
+                Country code
+                <div class="dial-code-shell">
+                  <span id="register-phone-flag" class="flag-badge flag-vn" aria-hidden="true"></span>
+                  <select id="register-phone-country" data-testid="register-phone-country" required></select>
+                </div>
+              </label>
+              <label>
+                Phone number
+                <input id="register-phone-local" type="tel" inputmode="numeric" placeholder="912345678" required />
+              </label>
+            </div>
+            <label>
+              Email
+              <input id="register-email" type="email" required />
+            </label>
+            <label>
+              Password
+              <input id="register-password" type="password" minlength="8" required />
+            </label>
+            <button class="primary-button full-width" id="register-submit" type="submit">Create account</button>
+          </form>
+        </section>
+
+        <section id="forgot-panel" class="tab-panel" data-tab-panel>
+          <div class="panel-toolbar">
+            <h2>Reset password</h2>
+            <button class="panel-link-button" data-tab-target="login-panel" type="button">Back to sign in</button>
+          </div>
+          <p class="subtle">Enter your email, date of birth, and a new password to recover access.</p>
+          <form id="forgot-form" class="form-grid">
+            <label>
+              Email
+              <input id="forgot-email" type="email" required />
+            </label>
+            <label>
+              Date of birth
+              <input id="forgot-date-of-birth" type="date" required />
+            </label>
+            <label>
+              New password
+              <input id="forgot-password" type="password" minlength="8" required />
+            </label>
+            <button class="primary-button" type="submit">Update password</button>
+          </form>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="/static/auth.js"></script>
+  </body>
+</html>

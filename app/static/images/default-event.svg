@@ -1,0 +1,7 @@
+﻿<svg width="1200" height="800" viewBox="0 0 1200 800" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="800" fill="#113946"/>
+  <circle cx="265" cy="180" r="146" fill="#F7E0A3" fill-opacity="0.75"/>
+  <rect x="130" y="250" width="940" height="330" rx="46" fill="white" fill-opacity="0.14"/>
+  <text x="160" y="420" fill="white" font-size="90" font-family="Georgia">New Event</text>
+  <text x="160" y="500" fill="#EEF6F4" font-size="34" font-family="Trebuchet MS">Add your own image URL in admin mode or use this default artwork</text>
+</svg>

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Event Detail | EventHub Verify</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260316-toast-actions" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="topbar-actions left-actions">
+          <a class="secondary-link" href="/dashboard">? Back to dashboard</a>
+        </div>
+        <div class="topbar-actions">
+          <div class="account-anchor">
+            <button class="account-trigger" data-testid="account-trigger" type="button" aria-label="Account">
+              <span data-testid="account-avatar">U</span>
+            </button>
+            <div class="account-menu hidden" data-testid="account-menu">
+              <p class="menu-name" data-testid="account-menu-name">User</p>
+              <p class="menu-email" data-testid="account-menu-email">email@example.com</p>
+              <a class="menu-link" data-testid="account-profile-link" href="/account">Account details</a>
+              <button class="menu-link danger-link" data-testid="account-logout" type="button">Sign out</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="page-shell detail-shell">
+        <div id="detail-message" class="notice hidden" data-testid="detail-message"></div>
+
+        <section class="detail-layout" data-testid="detail-layout">
+          <div class="detail-poster-rail">
+            <figure class="detail-visual detail-poster">
+              <div class="detail-gallery-shell">
+                <button id="detail-gallery-prev" class="detail-gallery-nav detail-gallery-nav-prev hidden" type="button" aria-label="Previous image">Prev</button>
+                <div id="detail-gallery-track" class="detail-gallery-track" data-testid="detail-gallery-track"></div>
+                <button id="detail-gallery-next" class="detail-gallery-nav detail-gallery-nav-next hidden" type="button" aria-label="Next image">Next</button>
+              </div>
+              <div id="detail-gallery-dots" class="detail-gallery-dots"></div>
+              <figcaption class="detail-poster-copy">
+                <span id="detail-location-chip" class="poster-chip">Venue</span>
+                <span id="detail-price-chip" class="poster-chip poster-chip-accent">$0 / ticket</span>
+              </figcaption>
+            </figure>
+          </div>
+
+          <article class="detail-card detail-card-editorial">
+            <p class="eyebrow">Event Detail</p>
+            <h1 id="detail-title" data-testid="detail-title">Loading...</h1>
+            <p id="detail-description" class="hero-copy detail-lede"></p>
+
+            <div class="stat-grid detail-stats">
+              <div class="stat-card">
+                <span>Ticket price</span>
+                <strong id="detail-price" data-testid="event-price"></strong>
+              </div>
+              <div class="stat-card">
+                <span>Registered attendees</span>
+                <strong id="detail-attendees" data-testid="event-attendees"></strong>
+              </div>
+              <div class="stat-card">
+                <span>Seats left</span>
+                <strong id="detail-seats" data-testid="event-seats"></strong>
+              </div>
+              <div class="stat-card">
+                <span>Start time</span>
+                <strong id="detail-start-at"></strong>
+              </div>
+            </div>
+
+            <section class="venue-panel">
+              <span class="section-tag">Venue note</span>
+              <strong id="detail-location"></strong>
+              <p id="detail-venue-details" class="hero-copy"></p>
+            </section>
+
+            <section class="program-arc">
+              <div class="program-card">
+                <span class="section-tag">Opening scene</span>
+                <p id="detail-opening"></p>
+              </div>
+              <div class="program-card program-card-mid">
+                <span class="section-tag">In the room</span>
+                <p id="detail-middle"></p>
+              </div>
+              <div class="program-card">
+                <span class="section-tag">Closing mood</span>
+                <p id="detail-closing"></p>
+              </div>
+            </section>
+
+            <div class="meta-list detail-meta-list">
+              <div>
+                <span>Your status</span>
+                <strong id="detail-status" data-testid="detail-status"></strong>
+              </div>
+              <div>
+                <span>Reservation note</span>
+                <strong>Each ticket reserves one seat and full event access.</strong>
+              </div>
+            </div>
+
+            <div class="button-row detail-actions">
+              <button id="detail-register" class="primary-button" data-testid="detail-register" type="button">Reserve your seat</button>
+              <button id="detail-cancel" class="secondary-button hidden" data-testid="detail-cancel" type="button">Cancel reservation</button>
+            </div>
+          </article>
+        </section>
+
+        <section id="detail-attendee-section" class="page-section hidden" data-testid="detail-attendee-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Admin View</p>
+              <h2>Attendee list</h2>
+            </div>
+            <button id="detail-load-attendees" class="secondary-button" type="button">Load attendees</button>
+          </div>
+          <div id="detail-attendee-list">Attendee data has not been loaded yet.</div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="/static/event-detail.js?v=20260316-toast-actions"></script>
+  </body>
+</html>

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Analytics | EventHub Verify</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260316-admin-workspace" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand-mark" href="/dashboard">EventHub Verify</a>
+        <div class="topbar-actions">
+          <span class="welcome-text" id="welcome-text">Welcome</span>
+          <div class="account-anchor">
+            <button class="account-trigger" data-testid="account-trigger" type="button" aria-label="Account">
+              <span data-testid="account-avatar">U</span>
+            </button>
+            <div class="account-menu hidden" data-testid="account-menu">
+              <p class="menu-name" data-testid="account-menu-name">User</p>
+              <p class="menu-email" data-testid="account-menu-email">email@example.com</p>
+              <a class="menu-link" data-testid="account-profile-link" href="/account">Account details</a>
+              <button class="menu-link danger-link" data-testid="account-logout" type="button">Sign out</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="page-shell">
+        <section class="hero-banner hero-banner-editorial">
+          <div class="hero-copy-block">
+            <p class="eyebrow">Chart Analysis</p>
+            <h1 class="hero-title">Revenue, registrations, and audience distribution in one place</h1>
+            <p class="hero-copy hero-lead">
+              Review event performance with a cleaner analytics layout: profit, seat fill, customer mix,
+              and per-event distribution from one dedicated management screen.
+            </p>
+          </div>
+          <div class="button-row">
+            <a class="secondary-button" href="/dashboard">Back to dashboard</a>
+            <button class="primary-button" id="admin-analytics-refresh" type="button">Refresh analytics</button>
+          </div>
+        </section>
+
+        <div id="admin-analytics-message" class="notice hidden"></div>
+
+        <section class="page-section">
+          <div class="analytics-summary-grid">
+            <article class="admin-card analytics-card">
+              <p class="eyebrow">Customers</p>
+              <h3 id="analytics-total-registrations" data-testid="analytics-total-registrations">0</h3>
+              <p class="subtle">Confirmed registrations across all events.</p>
+            </article>
+            <article class="admin-card analytics-card">
+              <p class="eyebrow">Revenue</p>
+              <h3 id="analytics-total-revenue" data-testid="analytics-total-revenue">$0</h3>
+              <p class="subtle">Projected ticket revenue from current registrations.</p>
+            </article>
+            <article class="admin-card analytics-card">
+              <p class="eyebrow">Occupancy</p>
+              <h3 id="analytics-occupancy-rate" data-testid="analytics-occupancy-rate">0%</h3>
+              <p class="subtle">Share of seats already reserved.</p>
+            </article>
+            <article class="admin-card analytics-card">
+              <p class="eyebrow">Average Ticket</p>
+              <h3 id="analytics-average-ticket" data-testid="analytics-average-ticket">$0</h3>
+              <p class="subtle">Average spend per confirmed registration.</p>
+            </article>
+          </div>
+
+          <div class="analytics-overview-grid">
+            <section class="admin-card analytics-card analytics-panel">
+              <div class="analytics-panel-header">
+                <div>
+                  <p class="eyebrow">Customer Mix</p>
+                  <h3>Domestic vs international demand</h3>
+                </div>
+                <strong id="analytics-customer-ratio">0% / 0%</strong>
+              </div>
+              <div id="analytics-customer-mix" class="distribution-list">No registrations yet.</div>
+            </section>
+
+            <section class="admin-card analytics-card analytics-panel">
+              <div class="analytics-panel-header">
+                <div>
+                  <p class="eyebrow">Markets</p>
+                  <h3>Registered countries</h3>
+                </div>
+              </div>
+              <div id="analytics-country-distribution" class="distribution-list">No registrations yet.</div>
+            </section>
+          </div>
+
+          <div class="analytics-event-block">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Event Analytics</p>
+                <h2>Distribution and revenue by event</h2>
+              </div>
+            </div>
+            <div id="admin-event-analytics" class="analytics-event-grid">No event analytics available yet.</div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="/static/admin-analytics.js?v=20260316-admin-workspace"></script>
+  </body>
+</html>

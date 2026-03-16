@@ -1,0 +1,38 @@
+services:
+  mongo:
+    image: mongo:8.0
+    restart: unless-stopped
+    command: ["mongod", "--bind_ip_all", "--port", "10105"]
+    ports:
+      - "10105:10105"
+    volumes:
+      - mongo-data:/data/db
+
+  mongo-express:
+    image: mongo-express:1.0.2
+    restart: unless-stopped
+    depends_on:
+      - mongo
+    ports:
+      - "8088:8081"
+    environment:
+      ME_CONFIG_MONGODB_URL: ${APP_MONGO_DOCKER_URI}/
+
+  web:
+    build: .
+    depends_on:
+      - mongo
+    ports:
+      - "10104:8000"
+    environment:
+      APP_ENV: ${APP_ENV}
+      APP_MONGO_URI: ${APP_MONGO_DOCKER_URI}
+      APP_MONGO_DB_NAME: ${APP_MONGO_DB_NAME}
+      APP_SECRET: ${APP_SECRET}
+      APP_SEED_DEMO: ${APP_SEED_DEMO}
+      APP_USE_MOCK_DB: ${APP_USE_MOCK_DB}
+    volumes:
+      - .:/app
+
+volumes:
+  mongo-data:

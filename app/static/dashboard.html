@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard | EventHub Verify</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260317-admin-topbar-tabs" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="topbar-brand-row">
+          <a class="brand-mark admin-topbar-link" href="/dashboard" data-admin-brand="true">EventHub Verify</a>
+          <div id="admin-topbar-nav" class="admin-topbar-nav hidden" data-testid="admin-topbar-nav">
+            <button class="admin-nav-button" data-admin-view="manager" type="button">Manager</button>
+            <button class="admin-nav-button" data-admin-view="analysis" type="button">Chart Analysis</button>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <span class="welcome-text" id="welcome-text">Welcome</span>
+          <div class="account-anchor">
+            <button class="account-trigger" data-testid="account-trigger" type="button" aria-label="Account">
+              <span data-testid="account-avatar">U</span>
+            </button>
+            <div class="account-menu hidden" data-testid="account-menu">
+              <p class="menu-name" data-testid="account-menu-name">User</p>
+              <p class="menu-email" data-testid="account-menu-email">email@example.com</p>
+              <a class="menu-link" data-testid="account-profile-link" href="/account">Account details</a>
+              <button class="menu-link danger-link" data-testid="account-logout" type="button">Sign out</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="page-shell">
+        <section class="hero-banner hero-banner-editorial">
+          <div class="hero-copy-block">
+            <p class="eyebrow">Curated Evenings</p>
+            <h1 class="hero-title">Find the event that feels worth dressing up for</h1>
+            <p class="hero-copy hero-lead">
+              Browse a more cinematic event board: richer venue details, clearer ticket pricing in dollars,
+              and a story-led preview of what happens at the opening, in the middle of the night, and at the close.
+            </p>
+          </div>
+          <div class="hero-metrics">
+            <article class="hero-metric-card">
+              <strong data-testid="event-count">0</strong>
+              <span>Open events</span>
+            </article>
+            <article class="hero-metric-card hero-metric-card-role">
+              <strong data-testid="user-role-chip">user</strong>
+              <span>Current role</span>
+            </article>
+          </div>
+        </section>
+
+        <div id="dashboard-message" class="notice hidden" data-testid="dashboard-message"></div>
+
+        <div id="dashboard-console" class="dashboard-console">
+          <div class="dashboard-console-stage">
+            <section class="page-section dashboard-board-section admin-view-panel" data-admin-panel="event-board">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Event Board</p>
+                  <h2>Explore What's On</h2>
+                </div>
+                <button class="secondary-button" id="refresh-events" type="button">Refresh</button>
+              </div>
+              <div id="event-grid" class="event-grid" data-testid="event-grid"></div>
+            </section>
+
+            <section id="admin-section" class="page-section admin-view-panel hidden" data-testid="admin-section" data-admin-panel="manager">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Manager</p>
+                  <h2>Edit or remove existing events</h2>
+                </div>
+              </div>
+
+              <section class="admin-card admin-manager-card">
+                <div class="admin-studio-head">
+                  <div>
+                    <p class="eyebrow">Event Inventory</p>
+                    <h3>Current event inventory</h3>
+                    <p class="subtle">Review the events already stored in MongoDB, open any event in the edit modal with existing details, or delete it directly from the database.</p>
+                  </div>
+                  <div class="admin-manager-head-actions">
+                    <span id="admin-manager-count" class="analytics-sidebar-count">0 events</span>
+                    <button class="primary-button admin-create-trigger" id="admin-open-create" data-testid="admin-open-create" type="button">+ Add event</button>
+                  </div>
+                </div>
+
+                <div id="admin-manager-list" class="admin-manager-list">No events available yet.</div>
+
+                <section class="admin-attendee-panel attendee-card">
+                  <div class="admin-attendee-panel-head">
+                    <div>
+                      <p class="eyebrow">Registrations</p>
+                      <h4>Attendee detail</h4>
+                    </div>
+                    <p class="subtle">Pick one event from the manager list and click <strong>Attendees</strong>.</p>
+                  </div>
+                  <div id="attendee-list" data-testid="attendee-list">Select an event and click "Attendees".</div>
+                </section>
+              </section>
+            </section>
+
+            <section id="admin-analysis-section" class="page-section admin-view-panel hidden" data-admin-panel="analysis">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Chart Analysis</p>
+                  <h2>Revenue, occupancy, markets, and audience distribution</h2>
+                </div>
+                <a class="secondary-button" href="/admin/analytics">Open full page</a>
+              </div>
+
+              <section class="admin-card admin-analysis-card admin-analysis-card-expanded">
+                <p class="subtle" id="admin-analysis-summary">Open the dedicated analytics page to inspect profit, customer mix, and per-event distribution in a cleaner management view.</p>
+
+                <div class="admin-analysis-preview-grid">
+                  <article>
+                    <span>Revenue</span>
+                    <strong id="analytics-total-revenue" data-testid="analytics-total-revenue">$0</strong>
+                  </article>
+                  <article>
+                    <span>Registrations</span>
+                    <strong id="analytics-total-registrations" data-testid="analytics-total-registrations">0</strong>
+                  </article>
+                  <article>
+                    <span>Occupancy</span>
+                    <strong id="analytics-occupancy-rate" data-testid="analytics-occupancy-rate">0%</strong>
+                  </article>
+                  <article>
+                    <span>Average Ticket</span>
+                    <strong id="analytics-average-ticket" data-testid="analytics-average-ticket">$0</strong>
+                  </article>
+                </div>
+
+                <div class="admin-analysis-meta">
+                  <article>
+                    <span>Customer mix</span>
+                    <strong id="analytics-customer-ratio">0% / 0%</strong>
+                  </article>
+                  <article>
+                    <span>Events tracked</span>
+                    <strong id="admin-analytics-event-count">0</strong>
+                  </article>
+                  <article>
+                    <span>Markets</span>
+                    <strong id="admin-analytics-market-count">0</strong>
+                  </article>
+                </div>
+
+                <a class="primary-button admin-analysis-link" href="/admin/analytics">Go to analytics details</a>
+              </section>
+            </section>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <div id="admin-event-modal" class="admin-modal hidden" data-testid="admin-event-modal" aria-hidden="true">
+      <div class="admin-modal-backdrop" data-action="close-admin-modal"></div>
+      <div class="admin-modal-dialog admin-card" role="dialog" aria-modal="true" aria-labelledby="admin-modal-title">
+        <div class="admin-modal-header">
+          <div>
+            <p class="eyebrow">Admin Studio</p>
+            <h3 id="admin-modal-title">Create event</h3>
+            <p class="subtle" id="admin-modal-subtitle">Add a new event and save it straight to MongoDB.</p>
+          </div>
+          <button class="secondary-button admin-modal-close" id="admin-modal-close" type="button">Close</button>
+        </div>
+
+        <form id="admin-form" class="form-grid admin-modal-form">
+          <input id="admin-event-id" type="hidden" />
+          <label>
+            Event title
+            <input id="admin-title" data-testid="admin-title" type="text" required />
+          </label>
+          <label>
+            Signature location
+            <input id="admin-location" type="text" required />
+          </label>
+          <label class="full-width">
+            Event description
+            <textarea id="admin-description" rows="4" required></textarea>
+          </label>
+          <label class="full-width">
+            Venue details
+            <textarea id="admin-venue-details" rows="3" placeholder="Address, floor, parking, entrance, check-in notes"></textarea>
+          </label>
+          <label>
+            Start time
+            <input id="admin-start-at" type="datetime-local" required />
+          </label>
+          <label>
+            Capacity
+            <input id="admin-capacity" type="number" min="1" required />
+          </label>
+          <label>
+            Ticket price (USD)
+            <input id="admin-price" type="number" min="0" step="1" required />
+          </label>
+          <label class="full-width">
+            Add gallery image (URL or static path)
+            <div class="image-editor-input-row">
+              <input id="admin-image-url" type="text" placeholder="/static/images/default-event.svg" />
+              <button class="secondary-button" id="admin-image-add" type="button">Add image</button>
+            </div>
+          </label>
+          <div class="full-width image-editor-panel">
+            <input id="admin-image-files" type="file" accept="image/*" multiple hidden />
+            <div id="admin-image-dropzone" class="admin-image-dropzone" tabindex="0" role="button" aria-label="Drop gallery images or browse files">
+              <div class="admin-image-dropzone-copy">
+                <strong>Drop multiple images here</strong>
+                <p class="subtle">Images are saved with the event. Drag the gallery cards below to reorder the cover and slide order.</p>
+              </div>
+              <button class="secondary-button" id="admin-image-browse" type="button">Browse files</button>
+            </div>
+            <div class="admin-image-preview-shell">
+              <img id="admin-image-preview" class="admin-image-preview" src="/static/images/default-event.svg" alt="Event gallery cover preview" />
+            </div>
+            <div class="image-editor-meta">
+              <p id="admin-image-status" class="subtle">No custom images yet. The viewer will see the default artwork until you add photos.</p>
+              <button class="secondary-button" id="admin-image-clear" type="button">Clear gallery</button>
+            </div>
+            <div id="admin-image-gallery" class="admin-image-gallery">No custom images added yet.</div>
+          </div>
+          <label class="full-width">
+            Opening scene
+            <textarea id="admin-opening-highlights" rows="3" placeholder="What happens at the opening reception, arrival, or kickoff"></textarea>
+          </label>
+          <label class="full-width">
+            In the room
+            <textarea id="admin-mid-event-highlights" rows="3" placeholder="What guests experience during the main part of the event"></textarea>
+          </label>
+          <label class="full-width">
+            Closing mood
+            <textarea id="admin-closing-highlights" rows="3" placeholder="How the evening closes, after-party, awards, or final networking"></textarea>
+          </label>
+          <div class="button-row full-width admin-modal-actions">
+            <button class="primary-button" data-testid="admin-save" type="submit">Save event</button>
+            <button class="secondary-button" id="admin-reset" type="button">Reset form</button>
+            <button class="secondary-button" id="admin-cancel" type="button">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script type="module" src="/static/dashboard.js?v=20260317-admin-topbar-tabs"></script>
+  </body>
+</html>
