@@ -92,6 +92,20 @@ class EventRegistrationServiceTests(unittest.TestCase):
         self.assertFalse(cancelled_event["is_registered"])
         self.assertEqual(cancelled_event["seats_left"], 1)
 
+    def test_list_user_registrations_preserves_cancelled_status(self) -> None:
+        event_id = self.service.list_events()[0]["id"]
+        self.service.register_for_event(self.student["id"], event_id)
+
+        confirmed_tickets = self.service.list_user_registrations(self.student["id"])
+        self.assertEqual(len(confirmed_tickets), 1)
+        self.assertEqual(confirmed_tickets[0]["status"], "confirmed")
+        self.assertTrue(confirmed_tickets[0]["ticket_code"])
+
+        self.service.cancel_registration(self.student["id"], event_id)
+        cancelled_tickets = self.service.list_user_registrations(self.student["id"])
+        self.assertEqual(cancelled_tickets[0]["status"], "cancelled")
+        self.assertIsNotNone(cancelled_tickets[0]["cancelled_at"])
+
     def test_admin_analytics_reports_revenue_and_distribution(self) -> None:
         us_user = self.service.register_user(
             "US Guest",
@@ -124,6 +138,33 @@ class EventRegistrationServiceTests(unittest.TestCase):
         country_distribution = {item["label"]: item["count"] for item in event_analytics["country_distribution"]}
         self.assertEqual(country_distribution["Vietnam"], 1)
         self.assertEqual(country_distribution["United States"], 1)
+
+
+    def test_update_user_profile_persists_avatar_and_contact(self) -> None:
+        updated = self.service.update_user_profile(
+            self.student["id"],
+            {
+                "name": "Updated Student",
+                "date_of_birth": "2004-08-20",
+                "country": "United States",
+                "province": "California",
+                "district": "San Francisco County",
+                "ward": "",
+                "street_address": "1 Market Street",
+                "phone_country_code": "+1",
+                "phone_country_label": "United States",
+                "phone_country_flag": "us",
+                "phone_local_number": "4155550199",
+                "avatar_url": "/static/images/gallery-foyer.svg",
+            },
+        )
+
+        self.assertEqual(updated["name"], "Updated Student")
+        self.assertEqual(updated["avatar_url"], "/static/images/gallery-foyer.svg")
+        self.assertEqual(updated["phone_number"], "+1 4155550199")
+        self.assertEqual(updated["phone_country_flag"], "us")
+        self.assertIn("San Francisco County", updated["permanent_address"])
+        self.assertIn("United States", updated["permanent_address"])
 
 
 if __name__ == "__main__":

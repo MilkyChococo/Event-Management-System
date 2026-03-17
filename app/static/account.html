@@ -4,12 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Account | EventHub Verify</title>
-    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260317-user-flow-upgrade" />
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar">
-        <a class="secondary-link" href="/dashboard">? Back to dashboard</a>
+        <a class="secondary-link" href="/dashboard">&#8592; Back to dashboard</a>
         <div class="topbar-actions">
           <div class="account-anchor">
             <button class="account-trigger" data-testid="account-trigger" type="button" aria-label="Account">
@@ -27,12 +27,22 @@
 
       <main class="page-shell account-page">
         <section class="profile-header-card">
-          <div class="profile-avatar-large" data-testid="profile-avatar">U</div>
-          <div>
-            <p class="eyebrow">Account</p>
-            <h1 id="profile-name" data-testid="profile-name">Loading...</h1>
-            <p id="profile-email" class="hero-copy"></p>
-            <span id="profile-role" class="profile-role-chip">user</span>
+          <div class="profile-header-main">
+            <div class="profile-avatar-stack">
+              <div class="profile-avatar-large" data-testid="profile-avatar">U</div>
+            </div>
+            <div class="profile-header-copy">
+              <p class="eyebrow">Account</p>
+              <h1 id="profile-name" data-testid="profile-name">Loading...</h1>
+              <p id="profile-email" class="hero-copy"></p>
+              <span id="profile-role" class="profile-role-chip">user</span>
+            </div>
+          </div>
+          <div class="profile-header-actions">
+            <button class="secondary-button profile-edit-button" id="profile-edit-trigger" data-testid="profile-edit-trigger" type="button">
+              <span class="profile-edit-icon" aria-hidden="true">&#9998;</span>
+              Edit details
+            </button>
           </div>
         </section>
 
@@ -94,9 +104,108 @@
             </article>
           </div>
         </section>
+
+        <section class="page-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">My tickets</p>
+              <h2>Registrations and ticket access</h2>
+            </div>
+          </div>
+          <div id="account-ticket-list" class="account-ticket-grid" data-testid="account-ticket-list">Loading tickets...</div>
+        </section>
       </main>
+      <div class="global-footer-host" data-global-footer-host></div>
     </div>
 
-    <script type="module" src="/static/account.js"></script>
+    <div id="profile-modal" class="admin-modal hidden" data-testid="profile-modal" aria-hidden="true">
+      <div class="admin-modal-backdrop" data-action="close-profile-modal"></div>
+      <div class="admin-modal-dialog admin-card profile-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
+        <div class="admin-modal-header">
+          <div>
+            <p class="eyebrow">Profile editor</p>
+            <h3 id="profile-modal-title">Edit account details</h3>
+            <p class="subtle">Update your avatar, phone region, and address details without leaving the account page.</p>
+          </div>
+          <button class="secondary-button" id="profile-modal-close" type="button">Close</button>
+        </div>
+
+        <form id="profile-form" class="form-grid admin-modal-form two-columns">
+          <label class="full-width">
+            Email
+            <input id="profile-form-email" class="profile-readonly-input" type="email" disabled />
+          </label>
+
+          <section class="full-width profile-avatar-editor">
+            <div class="profile-avatar-preview-row">
+              <div id="profile-avatar-preview" class="profile-avatar-large profile-avatar-preview" data-testid="profile-avatar-preview">U</div>
+              <div class="profile-avatar-editor-actions">
+                <input id="profile-avatar-file" type="file" accept="image/*" hidden />
+                <button class="secondary-button" id="profile-avatar-browse" type="button">Upload avatar</button>
+                <button class="secondary-button" id="profile-avatar-clear" type="button">Remove avatar</button>
+              </div>
+            </div>
+            <label class="full-width">
+              Avatar URL or static path
+              <div class="image-editor-input-row">
+                <input id="profile-avatar-url" type="text" placeholder="https://example.com/avatar.jpg or /static/images/..." />
+                <button class="secondary-button" id="profile-avatar-apply" type="button">Use image</button>
+              </div>
+            </label>
+            <p id="profile-avatar-status" class="subtle profile-avatar-status">Add a profile photo to personalize your account card and menu avatar.</p>
+          </section>
+
+          <label>
+            Full name
+            <input id="profile-form-name" data-testid="profile-form-name" type="text" required />
+          </label>
+          <label>
+            Date of birth
+            <input id="profile-form-date-of-birth" type="date" required />
+          </label>
+          <label>
+            Country
+            <select id="profile-form-country" required></select>
+          </label>
+          <label>
+            Province / State
+            <select id="profile-form-province" required></select>
+          </label>
+          <label>
+            District / County
+            <select id="profile-form-district" required></select>
+          </label>
+          <label>
+            Ward / Area
+            <select id="profile-form-ward"></select>
+          </label>
+          <label class="full-width">
+            Street address
+            <input id="profile-form-street-address" type="text" required />
+          </label>
+          <div class="phone-entry-row full-width">
+            <label>
+              Country code
+              <div class="dial-code-shell">
+                <span id="profile-form-phone-flag" class="flag-badge flag-vn" aria-hidden="true"></span>
+                <select id="profile-form-phone-country" data-testid="profile-form-phone-country" required></select>
+              </div>
+            </label>
+            <label>
+              Phone number
+              <input id="profile-form-phone-local-number" type="tel" inputmode="numeric" placeholder="912345678" required />
+            </label>
+          </div>
+
+          <div class="button-row full-width admin-modal-actions">
+            <button class="primary-button" data-testid="profile-save" type="submit">Save changes</button>
+            <button class="secondary-button" id="profile-reset" type="button">Reset</button>
+            <button class="secondary-button" id="profile-cancel" type="button">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script type="module" src="/static/account.js?v=20260317-user-flow-upgrade"></script>
   </body>
 </html>

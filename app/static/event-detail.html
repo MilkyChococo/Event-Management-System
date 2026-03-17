@@ -4,13 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Event Detail | EventHub Verify</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260316-toast-actions" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260317-user-flow-upgrade" />
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar">
         <div class="topbar-actions left-actions">
-          <a class="secondary-link" href="/dashboard">? Back to dashboard</a>
+          <a class="secondary-link" href="/dashboard">&#8592; Back to dashboard</a>
         </div>
         <div class="topbar-actions">
           <div class="account-anchor">
@@ -51,6 +51,12 @@
             <h1 id="detail-title" data-testid="detail-title">Loading...</h1>
             <p id="detail-description" class="hero-copy detail-lede"></p>
 
+            <div class="card-pills detail-chip-row">
+              <span id="detail-category-badge" class="pill">Category</span>
+              <span id="detail-format-badge" class="pill">Format</span>
+              <span id="detail-deadline-badge" class="pill">Deadline</span>
+            </div>
+
             <div class="stat-grid detail-stats">
               <div class="stat-card">
                 <span>Ticket price</span>
@@ -70,11 +76,20 @@
               </div>
             </div>
 
-            <section class="venue-panel">
-              <span class="section-tag">Venue note</span>
-              <strong id="detail-location"></strong>
-              <p id="detail-venue-details" class="hero-copy"></p>
-            </section>
+            <div class="detail-feature-grid">
+              <section class="venue-panel">
+                <span class="section-tag">Venue note</span>
+                <strong id="detail-location"></strong>
+                <p id="detail-venue-details" class="hero-copy"></p>
+                <a id="detail-map-link" class="detail-link" href="#" target="_blank" rel="noreferrer">Open map</a>
+              </section>
+
+              <section class="program-card">
+                <span class="section-tag">Organizer</span>
+                <strong id="detail-organizer-name"></strong>
+                <p id="detail-organizer-details"></p>
+              </section>
+            </div>
 
             <section class="program-arc">
               <div class="program-card">
@@ -90,6 +105,32 @@
                 <p id="detail-closing"></p>
               </div>
             </section>
+
+            <div class="detail-split-grid">
+              <section class="program-card">
+                <span class="section-tag">Speaker lineup</span>
+                <div id="detail-speakers" class="detail-list"></div>
+              </section>
+              <section class="program-card">
+                <span class="section-tag">Ticket types</span>
+                <div id="detail-ticket-tiers" class="detail-ticket-tiers"></div>
+              </section>
+            </div>
+
+            <div class="detail-policy-grid">
+              <section class="program-card">
+                <span class="section-tag">Refund policy</span>
+                <p id="detail-refund-policy"></p>
+              </section>
+              <section class="program-card">
+                <span class="section-tag">Check-in</span>
+                <p id="detail-check-in-policy"></p>
+              </section>
+              <section class="program-card">
+                <span class="section-tag">Contact</span>
+                <p id="detail-contact"></p>
+              </section>
+            </div>
 
             <div class="meta-list detail-meta-list">
               <div>
@@ -120,8 +161,53 @@
           <div id="detail-attendee-list">Attendee data has not been loaded yet.</div>
         </section>
       </main>
+      <div class="global-footer-host" data-global-footer-host></div>
     </div>
 
-    <script type="module" src="/static/event-detail.js?v=20260316-toast-actions"></script>
+    <div id="detail-registration-modal" class="admin-modal hidden" data-testid="detail-registration-modal" aria-hidden="true">
+      <div class="admin-modal-backdrop" data-action="close-detail-registration"></div>
+      <div class="admin-modal-dialog admin-card detail-registration-dialog" role="dialog" aria-modal="true" aria-labelledby="detail-registration-title">
+        <div class="admin-modal-header">
+          <div>
+            <p class="eyebrow">Registration flow</p>
+            <h3 id="detail-registration-title">Reserve your seat</h3>
+            <p class="subtle">Choose a ticket, confirm attendee details, and submit a complete reservation instead of a one-click demo action.</p>
+          </div>
+          <button class="secondary-button" id="detail-registration-close" type="button">Close</button>
+        </div>
+
+        <div class="detail-registration-shell">
+          <form id="detail-registration-form" class="form-grid detail-registration-form">
+            <label>
+              Ticket type
+              <select id="detail-registration-ticket" required></select>
+            </label>
+            <label>
+              Attendee name
+              <input id="detail-registration-name" type="text" required />
+            </label>
+            <label>
+              Attendee email
+              <input id="detail-registration-email" type="email" required />
+            </label>
+            <label>
+              Contact phone
+              <input id="detail-registration-phone" type="tel" required />
+            </label>
+            <div class="button-row detail-registration-actions">
+              <button class="primary-button" id="detail-registration-submit" type="submit">Confirm reservation</button>
+              <button class="secondary-button" id="detail-registration-cancel" type="button">Cancel</button>
+            </div>
+          </form>
+
+          <aside class="detail-registration-summary">
+            <p class="eyebrow">Confirmation</p>
+            <div id="detail-registration-summary" class="detail-registration-summary-card"></div>
+          </aside>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/static/event-detail.js?v=20260317-user-flow-upgrade"></script>
   </body>
 </html>

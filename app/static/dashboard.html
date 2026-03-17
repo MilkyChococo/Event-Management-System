@@ -4,20 +4,27 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Dashboard | EventHub Verify</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260317-admin-topbar-tabs" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260317-dashboard-nav-edge" />
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar">
         <div class="topbar-brand-row">
           <a class="brand-mark admin-topbar-link" href="/dashboard" data-admin-brand="true">EventHub Verify</a>
+          <div class="admin-topbar-nav" data-testid="topbar-about-nav">
+            <span class="admin-topbar-separator" aria-hidden="true">|</span>
+            <a class="admin-nav-button" href="/aboutus" data-testid="aboutus-link">About Us</a>
+          </div>
           <div id="admin-topbar-nav" class="admin-topbar-nav hidden" data-testid="admin-topbar-nav">
-            <button class="admin-nav-button" data-admin-view="manager" type="button">Manager</button>
-            <button class="admin-nav-button" data-admin-view="analysis" type="button">Chart Analysis</button>
+            <span class="admin-topbar-separator" aria-hidden="true">|</span>
+            <a class="admin-nav-button" href="/admin/manager" data-admin-view="manager" data-testid="admin-manager-link">Manager</a>
+            <span class="admin-topbar-separator" aria-hidden="true">|</span>
+            <a class="admin-nav-button" href="/admin/analytics" data-admin-view="analysis" data-testid="admin-analytics-link">Chart Analysis</a>
           </div>
         </div>
         <div class="topbar-actions">
           <span class="welcome-text" id="welcome-text">Welcome</span>
+          <span class="topbar-role-chip" data-testid="user-role-chip">user</span>
           <div class="account-anchor">
             <button class="account-trigger" data-testid="account-trigger" type="button" aria-label="Account">
               <span data-testid="account-avatar">U</span>
@@ -33,28 +40,9 @@
       </header>
 
       <main class="page-shell">
-        <section class="hero-banner hero-banner-editorial">
-          <div class="hero-copy-block">
-            <p class="eyebrow">Curated Evenings</p>
-            <h1 class="hero-title">Find the event that feels worth dressing up for</h1>
-            <p class="hero-copy hero-lead">
-              Browse a more cinematic event board: richer venue details, clearer ticket pricing in dollars,
-              and a story-led preview of what happens at the opening, in the middle of the night, and at the close.
-            </p>
-          </div>
-          <div class="hero-metrics">
-            <article class="hero-metric-card">
-              <strong data-testid="event-count">0</strong>
-              <span>Open events</span>
-            </article>
-            <article class="hero-metric-card hero-metric-card-role">
-              <strong data-testid="user-role-chip">user</strong>
-              <span>Current role</span>
-            </article>
-          </div>
+        <section class="hero-banner hero-banner-stage">
+          <div id="event-grid" class="event-grid event-grid-hero" data-testid="event-grid"></div>
         </section>
-
-        <div id="dashboard-message" class="notice hidden" data-testid="dashboard-message"></div>
 
         <div id="dashboard-console" class="dashboard-console">
           <div class="dashboard-console-stage">
@@ -64,16 +52,65 @@
                   <p class="eyebrow">Event Board</p>
                   <h2>Explore What's On</h2>
                 </div>
-                <button class="secondary-button" id="refresh-events" type="button">Refresh</button>
+                <div class="section-heading-actions">
+                  <span class="analytics-sidebar-count" data-testid="event-count">0 events</span>
+                  <button class="secondary-button" id="refresh-events" type="button">Refresh</button>
+                </div>
               </div>
-              <div id="event-grid" class="event-grid" data-testid="event-grid"></div>
+              <div class="event-board-toolbar">
+                <label class="event-toolbar-field event-toolbar-search">
+                  Search
+                  <div class="event-search-control">
+                    <input id="event-search" type="search" placeholder="Search by title, venue, or description" />
+                  </div>
+                </label>
+                <label class="event-toolbar-field">
+                  Category
+                  <select id="event-category-filter">
+                    <option value="">All categories</option>
+                  </select>
+                </label>
+                <label class="event-toolbar-field">
+                  Location
+                  <select id="event-location-filter">
+                    <option value="">All locations</option>
+                  </select>
+                </label>
+                <label class="event-toolbar-field">
+                  Pricing
+                  <select id="event-price-filter">
+                    <option value="">All events</option>
+                    <option value="free">Free</option>
+                    <option value="paid">Paid</option>
+                  </select>
+                </label>
+                <label class="event-toolbar-field">
+                  Sort
+                  <select id="event-sort">
+                    <option value="soonest">Soonest</option>
+                    <option value="latest">Latest</option>
+                    <option value="price-high">Highest price</option>
+                    <option value="seats-low">Fewest seats left</option>
+                  </select>
+                </label>
+                <div class="event-toolbar-action">
+                  <button class="event-search-button" id="event-search-submit" type="button" aria-label="Search events">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                      <path d="M10.5 4a6.5 6.5 0 1 0 4.011 11.615l4.437 4.436 1.414-1.414-4.436-4.437A6.5 6.5 0 0 0 10.5 4Zm0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Z" fill="currentColor" />
+                    </svg>
+                    <span>Search</span>
+                  </button>
+                </div>
+              </div>
+              <p id="event-board-state" class="subtle event-board-state">Showing all events.</p>
+              <div id="event-match-list" class="event-match-list" data-testid="event-match-list"></div>
             </section>
 
             <section id="admin-section" class="page-section admin-view-panel hidden" data-testid="admin-section" data-admin-panel="manager">
               <div class="section-heading">
                 <div>
-                  <p class="eyebrow">Manager</p>
-                  <h2>Edit or remove existing events</h2>
+                  
+                  <h2>Event Management</h2>
                 </div>
               </div>
 
@@ -157,6 +194,7 @@
           </div>
         </div>
       </main>
+      <div class="global-footer-host" data-global-footer-host></div>
     </div>
 
     <div id="admin-event-modal" class="admin-modal hidden" data-testid="admin-event-modal" aria-hidden="true">
@@ -200,6 +238,58 @@
           <label>
             Ticket price (USD)
             <input id="admin-price" type="number" min="0" step="1" required />
+          </label>
+          <label>
+            Category
+            <input id="admin-category" type="text" placeholder="Workshop, Showcase, Career Night" />
+          </label>
+          <label>
+            Event format
+            <select id="admin-event-format">
+              <option value="Offline">Offline</option>
+              <option value="Online">Online</option>
+              <option value="Hybrid">Hybrid</option>
+            </select>
+          </label>
+          <label>
+            Registration deadline
+            <input id="admin-registration-deadline" type="datetime-local" />
+          </label>
+          <label>
+            Organizer name
+            <input id="admin-organizer-name" type="text" placeholder="EventHub Verify Studio" />
+          </label>
+          <label class="full-width">
+            Organizer details
+            <textarea id="admin-organizer-details" rows="3" placeholder="Who is hosting the event and what makes the room feel credible?"></textarea>
+          </label>
+          <label class="full-width">
+            Speaker lineup
+            <textarea id="admin-speaker-lineup" rows="4" placeholder="One speaker per line"></textarea>
+          </label>
+          <label class="full-width">
+            Ticket types
+            <textarea id="admin-ticket-types" rows="4" placeholder="One ticket per line: Label | price | details"></textarea>
+          </label>
+          <label>
+            Map URL
+            <input id="admin-map-url" type="url" placeholder="https://maps.google.com/..." />
+          </label>
+          <label>
+            Support email
+            <input id="admin-contact-email" type="email" placeholder="team@example.com" />
+          </label>
+          <label>
+            Support phone
+            <input id="admin-contact-phone" type="text" placeholder="0365349036" />
+          </label>
+          <label class="full-width">
+            Refund policy
+            <textarea id="admin-refund-policy" rows="3" placeholder="Explain refund timing and any cut-off window"></textarea>
+          </label>
+          <label class="full-width">
+            Check-in policy
+            <textarea id="admin-check-in-policy" rows="3" placeholder="Explain QR check-in, arrival timing, and on-site instructions"></textarea>
           </label>
           <label class="full-width">
             Add gallery image (URL or static path)
@@ -247,6 +337,6 @@
       </div>
     </div>
 
-    <script type="module" src="/static/dashboard.js?v=20260317-admin-topbar-tabs"></script>
+    <script type="module" src="/static/dashboard.js?v=20260317-dashboard-nav-revert"></script>
   </body>
 </html>

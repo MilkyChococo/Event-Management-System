@@ -1,4 +1,4 @@
-﻿function formatValidationDetail(detail) {
+function formatValidationDetail(detail) {
   if (!detail || typeof detail !== "object") {
     return "Unexpected request failure.";
   }
@@ -178,6 +178,38 @@ export function extractEventIdFromPath() {
   return match ? Number(match[1]) : null;
 }
 
+export function renderUserAvatar(target, user, imageClass = "avatar-image-fill") {
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+
+  const name = String(user?.name || "User").trim() || "User";
+  const avatarUrl = String(user?.avatar_url || "").trim();
+  const fallbackText = initials(name) || "U";
+
+  target.classList.toggle("has-image", Boolean(avatarUrl));
+  target.textContent = "";
+
+  if (!avatarUrl) {
+    target.textContent = fallbackText;
+    return;
+  }
+
+  const avatarImage = document.createElement("img");
+  avatarImage.className = imageClass;
+  avatarImage.src = avatarUrl;
+  avatarImage.alt = `${name} avatar`;
+  avatarImage.addEventListener(
+    "error",
+    () => {
+      target.classList.remove("has-image");
+      target.textContent = fallbackText;
+    },
+    { once: true }
+  );
+  target.appendChild(avatarImage);
+}
+
 export function setupAccountMenu(user) {
   const trigger = document.querySelector("[data-testid='account-trigger']");
   const menu = document.querySelector("[data-testid='account-menu']");
@@ -191,10 +223,14 @@ export function setupAccountMenu(user) {
     return;
   }
 
-  avatar.textContent = initials(user.name);
+  renderUserAvatar(avatar, user, "account-avatar-image");
   name.textContent = user.name;
   email.textContent = user.email;
   accountLink.href = "/account";
+
+  if (trigger.dataset.accountMenuBound === "true") {
+    return;
+  }
 
   trigger.addEventListener("click", () => {
     menu.classList.toggle("hidden");
@@ -210,6 +246,81 @@ export function setupAccountMenu(user) {
     }
     if (!menu.contains(event.target) && !trigger.contains(event.target)) {
       menu.classList.add("hidden");
+    }
+  });
+
+  trigger.dataset.accountMenuBound = "true";
+}
+
+function buildGlobalFooterMarkup(user) {
+  const normalizedUser = user || { name: "User", email: "email@example.com", role: "user" };
+  const isAdmin = normalizedUser.role === "admin";
+  const roleLabel = isAdmin ? "Admin" : "User";
+
+  return `
+    <footer class="dashboard-site-footer">
+      <section class="dashboard-site-footer-panel">
+        <div class="dashboard-site-footer-top">
+          <a class="dashboard-support-link" href="mailto:thienphu210505@gmail.com?subject=EventHub%20Verify%20Support">
+            <span aria-hidden="true">&#9993;</span>
+            Contact site support
+            <span aria-hidden="true">&#8599;</span>
+          </a>
+        </div>
+
+        <div class="dashboard-site-footer-grid">
+          <section class="dashboard-site-footer-column">
+            <p class="dashboard-site-footer-label">Session</p>
+            <p class="dashboard-site-footer-copy">
+              You are signed in as <strong>${escapeHtml(normalizedUser.name)}</strong> (${escapeHtml(roleLabel)})
+              <a class="dashboard-footer-inline-link" href="/account">Account details</a>
+              <button class="dashboard-footer-inline-button" data-action="global-footer-logout" type="button">Sign out</button>
+            </p>
+            <a class="dashboard-footer-link" href="mailto:${escapeHtml(normalizedUser.email)}">Email: ${escapeHtml(normalizedUser.email)}</a>
+          </section>
+
+          <section class="dashboard-site-footer-column">
+            <p class="dashboard-site-footer-label">About EventHub Verify</p>
+            <a class="dashboard-footer-link" href="/aboutus">SE113.Q21 event board</a>
+            <p class="dashboard-site-footer-copy">Reserve seats with clearer venue and timing context.</p>
+            <p class="dashboard-site-footer-copy">Updates stay more reliable through MongoDB-backed event data.</p>
+          </section>
+
+          <section class="dashboard-site-footer-column">
+            <p class="dashboard-site-footer-label">Website Information</p>
+            <p class="dashboard-site-footer-copy"><strong>Admin: Truong Thien Phu</strong></p>
+            <a class="dashboard-footer-link" href="mailto:thienphu210505@gmail.com">Email: thienphu210505@gmail.com</a>
+            <a class="dashboard-footer-link" href="tel:0365349036">Contact: 0365349036</a>
+            <p class="dashboard-site-footer-copy">Location: Thu Duc, Ho Chi Minh City.</p>
+          </section>
+        </div>
+      </section>
+    </footer>
+  `;
+}
+
+export function setupGlobalFooter(user) {
+  const appShell = document.querySelector('.app-shell');
+  if (!(appShell instanceof HTMLElement) || !user) {
+    return;
+  }
+
+  let host = appShell.querySelector('[data-global-footer-host]');
+  if (!(host instanceof HTMLElement)) {
+    host = document.createElement('div');
+    host.setAttribute('data-global-footer-host', '');
+    appShell.appendChild(host);
+  }
+
+  host.className = 'global-footer-host';
+  host.innerHTML = buildGlobalFooterMarkup(user);
+
+  const logoutButton = host.querySelector('[data-action="global-footer-logout"]');
+  logoutButton?.addEventListener('click', async () => {
+    try {
+      await logoutAndRedirect();
+    } catch (error) {
+      showToast(error.message || 'Could not sign out.', 'error');
     }
   });
 }

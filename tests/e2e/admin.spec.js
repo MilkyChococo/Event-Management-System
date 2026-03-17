@@ -9,6 +9,8 @@ test("@critical admin can create an event from the admin console", async ({ page
   await page.getByTestId("login-submit").click();
 
   await expect(page).toHaveURL(/\/dashboard$/);
+  await page.getByTestId("admin-manager-link").click();
+  await expect(page).toHaveURL(/\/admin\/manager$/);
   await expect(page.getByTestId("admin-section")).toBeVisible();
   await page.getByTestId("admin-open-create").click();
   await expect(page.getByTestId("admin-event-modal")).toBeVisible();
@@ -20,7 +22,5 @@ test("@critical admin can create an event from the admin console", async ({ page
   await page.locator("#admin-price").fill("150000");
   await page.getByTestId("admin-save").click();
 
-  await expect(page.getByTestId("dashboard-message")).toContainText("Event created successfully.");
-  await page.getByRole("button", { name: `Show ${title}` }).click();
-  await expect(page.getByTestId("event-grid")).toContainText(title);
+  await expect(page.locator("#admin-manager-list")).toContainText(title);
 });

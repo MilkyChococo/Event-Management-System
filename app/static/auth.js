@@ -1,4 +1,4 @@
-import { api, clearNotice, getCurrentUser, redirectTo, showNotice } from "/static/shared.js";
+import { api, clearNotice, getCurrentUser, redirectTo, showNotice } from "/static/shared.js?v=20260317-account-avatar-modal";
 import {
   DEFAULT_COUNTRY,
   DEFAULT_DISTRICT,

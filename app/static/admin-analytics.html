@@ -4,12 +4,24 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Admin Analytics | EventHub Verify</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260316-admin-workspace" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260317-global-footer-gap" />
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar">
-        <a class="brand-mark" href="/dashboard">EventHub Verify</a>
+        <div class="topbar-brand-row">
+          <a class="brand-mark admin-topbar-link" href="/dashboard" data-testid="admin-dashboard-link">EventHub Verify</a>
+          <div class="admin-topbar-nav" data-testid="topbar-about-nav">
+            <span class="admin-topbar-separator" aria-hidden="true">|</span>
+            <a class="admin-nav-button" href="/aboutus" data-testid="aboutus-link">About Us</a>
+          </div>
+          <div class="admin-topbar-nav" data-testid="admin-topbar-nav">
+            <span class="admin-topbar-separator" aria-hidden="true">|</span>
+            <a class="admin-nav-button" href="/admin/manager" data-testid="admin-manager-link">Manager</a>
+            <span class="admin-topbar-separator" aria-hidden="true">|</span>
+            <a class="admin-nav-button is-active" href="/admin/analytics" aria-current="page" data-testid="admin-analytics-link">Chart Analysis</a>
+          </div>
+        </div>
         <div class="topbar-actions">
           <span class="welcome-text" id="welcome-text">Welcome</span>
           <div class="account-anchor">
@@ -27,24 +39,14 @@
       </header>
 
       <main class="page-shell">
-        <section class="hero-banner hero-banner-editorial">
-          <div class="hero-copy-block">
-            <p class="eyebrow">Chart Analysis</p>
-            <h1 class="hero-title">Revenue, registrations, and audience distribution in one place</h1>
-            <p class="hero-copy hero-lead">
-              Review event performance with a cleaner analytics layout: profit, seat fill, customer mix,
-              and per-event distribution from one dedicated management screen.
-            </p>
-          </div>
-          <div class="button-row">
-            <a class="secondary-button" href="/dashboard">Back to dashboard</a>
+        <section class="page-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Chart Analysis</p>
+              <h2>Revenue, registrations, and audience distribution</h2>
+            </div>
             <button class="primary-button" id="admin-analytics-refresh" type="button">Refresh analytics</button>
           </div>
-        </section>
-
-        <div id="admin-analytics-message" class="notice hidden"></div>
-
-        <section class="page-section">
           <div class="analytics-summary-grid">
             <article class="admin-card analytics-card">
               <p class="eyebrow">Customers</p>
@@ -102,8 +104,9 @@
           </div>
         </section>
       </main>
+      <div class="global-footer-host" data-global-footer-host></div>
     </div>
 
-    <script type="module" src="/static/admin-analytics.js?v=20260316-admin-workspace"></script>
+    <script type="module" src="/static/admin-analytics.js?v=20260317-global-footer-routes"></script>
   </body>
 </html>

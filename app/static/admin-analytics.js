@@ -1,16 +1,15 @@
 import {
   api,
-  clearNotice,
   escapeHtml,
   formatCurrency,
   formatDateTime,
   getCurrentUser,
   redirectTo,
+  setupGlobalFooter,
   setupAccountMenu,
-  showNotice,
-} from "/static/shared.js?v=20260316-toast-actions";
+  showToast,
+} from "/static/shared.js?v=20260317-global-footer-routes";
 
-const messageBox = document.querySelector("#admin-analytics-message");
 const refreshButton = document.querySelector("#admin-analytics-refresh");
 const welcomeText = document.querySelector("#welcome-text");
 const analyticsTotalRegistrations = document.querySelector("#analytics-total-registrations");
@@ -33,6 +32,10 @@ function formatPercent(value) {
   const numeric = Number(value || 0);
   const digits = Number.isInteger(numeric) ? 0 : 1;
   return `${numeric.toFixed(digits)}%`;
+}
+
+function getAnalyticsEventId(event) {
+  return Number(event?.event_id ?? event?.id ?? 0);
 }
 
 function toDistributionMarkup(items, emptyMessage) {
@@ -124,12 +127,12 @@ function renderEventAnalytics(events) {
 
   if (
     state.selectedAnalyticsEventId === null ||
-    !events.some((event) => event.id === state.selectedAnalyticsEventId)
+    !events.some((event) => getAnalyticsEventId(event) === state.selectedAnalyticsEventId)
   ) {
-    state.selectedAnalyticsEventId = events[0].id;
+    state.selectedAnalyticsEventId = getAnalyticsEventId(events[0]);
   }
 
-  const selectedEvent = events.find((event) => event.id === state.selectedAnalyticsEventId) || events[0];
+  const selectedEvent = events.find((event) => getAnalyticsEventId(event) === state.selectedAnalyticsEventId) || events[0];
 
   return `
     <div class="analytics-event-shell ${state.analyticsSidebarOpen ? "is-open" : "is-collapsed"}">
@@ -154,11 +157,11 @@ function renderEventAnalytics(events) {
                     .map(
                       (event) => `
                         <button
-                          class="analytics-sidebar-item ${selectedEvent?.id === event.id ? "is-active" : ""}"
+                          class="analytics-sidebar-item ${getAnalyticsEventId(selectedEvent) === getAnalyticsEventId(event) ? "is-active" : ""}"
                           data-action="select-analytics-event"
-                          data-id="${event.id}"
+                          data-id="${getAnalyticsEventId(event)}"
                           type="button"
-                          aria-pressed="${selectedEvent?.id === event.id ? "true" : "false"}"
+                          aria-pressed="${getAnalyticsEventId(selectedEvent) === getAnalyticsEventId(event) ? "true" : "false"}"
                         >
                           <span>${escapeHtml(formatDateTime(event.start_at))}</span>
                           <strong>${escapeHtml(event.title)}</strong>
@@ -221,15 +224,15 @@ async function boot() {
   }
 
   setupAccountMenu(state.user);
+  setupGlobalFooter(state.user);
   welcomeText.textContent = `Welcome, ${state.user.name}`;
 
   refreshButton?.addEventListener("click", async () => {
     try {
-      clearNotice(messageBox);
       await loadAnalytics();
-      showNotice(messageBox, "Analytics refreshed.");
+      showToast("Analytics refreshed.");
     } catch (error) {
-      showNotice(messageBox, error.message, "error");
+      showToast(error.message, "error");
     }
   });
 
@@ -243,13 +246,14 @@ async function boot() {
     const toggleTarget = target.closest('[data-action="toggle-event-analytics"]');
     if (toggleTarget instanceof HTMLElement) {
       state.analyticsSidebarOpen = !state.analyticsSidebarOpen;
-      if (!state.analyticsSidebarOpen) {
-        state.selectedAnalyticsEventId = null;
-      } else if (
-        state.selectedAnalyticsEventId === null ||
-        !analyticsEvents.some((analyticsEvent) => analyticsEvent.id === state.selectedAnalyticsEventId)
+      if (
+        state.analyticsSidebarOpen &&
+        (
+          state.selectedAnalyticsEventId === null ||
+          !analyticsEvents.some((analyticsEvent) => getAnalyticsEventId(analyticsEvent) === state.selectedAnalyticsEventId)
+        )
       ) {
-        state.selectedAnalyticsEventId = analyticsEvents[0]?.id ?? null;
+        state.selectedAnalyticsEventId = analyticsEvents.length ? getAnalyticsEventId(analyticsEvents[0]) : null;
       }
       renderAnalytics();
       return;
@@ -265,14 +269,14 @@ async function boot() {
       return;
     }
 
-    state.selectedAnalyticsEventId = state.selectedAnalyticsEventId === eventId ? null : eventId;
+    state.selectedAnalyticsEventId = eventId;
     renderAnalytics();
   });
 
   try {
     await loadAnalytics();
   } catch (error) {
-    showNotice(messageBox, error.message, "error");
+    showToast(error.message, "error");
   }
 }
 

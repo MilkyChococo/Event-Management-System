@@ -106,6 +106,17 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json()["error"]["code"], "FORBIDDEN")
 
+    def test_admin_manager_page_requires_admin(self) -> None:
+        self.login("student@example.com", "Student123!")
+        forbidden_response = self.client.get("/admin/manager")
+        self.assertEqual(forbidden_response.status_code, 403)
+
+        self.client.post("/api/auth/logout")
+        self.login("admin@example.com", "Admin123!")
+        allowed_response = self.client.get("/admin/manager")
+        self.assertEqual(allowed_response.status_code, 200)
+        self.assertIn("text/html", allowed_response.headers.get("content-type", ""))
+
     def test_admin_can_view_analytics_with_distribution_and_revenue(self) -> None:
         self.login("student@example.com", "Student123!")
         event = self.client.get("/api/events").json()[0]
@@ -326,6 +337,35 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(cancel_response.status_code, 200)
         self.assertFalse(cancel_response.json()["is_registered"])
 
+    def test_user_registration_history_returns_ticket_status(self) -> None:
+        self.login("student@example.com", "Student123!")
+        event_id = self.client.get("/api/events").json()[0]["id"]
+
+        register_response = self.client.post(
+            f"/api/events/{event_id}/register",
+            json={
+                "ticket_label": "Workshop Seat",
+                "attendee_name": "Student Demo",
+                "attendee_email": "student@example.com",
+                "attendee_phone": "+84 912345678",
+            },
+        )
+        self.assertEqual(register_response.status_code, 200)
+
+        tickets_response = self.client.get("/api/me/registrations")
+        self.assertEqual(tickets_response.status_code, 200)
+        self.assertEqual(len(tickets_response.json()), 1)
+        self.assertEqual(tickets_response.json()[0]["status"], "confirmed")
+        self.assertTrue(tickets_response.json()[0]["ticket_code"])
+
+        cancel_response = self.client.delete(f"/api/events/{event_id}/register")
+        self.assertEqual(cancel_response.status_code, 200)
+
+        cancelled_tickets_response = self.client.get("/api/me/registrations")
+        self.assertEqual(cancelled_tickets_response.status_code, 200)
+        self.assertEqual(cancelled_tickets_response.json()[0]["status"], "cancelled")
+        self.assertTrue(cancelled_tickets_response.json()[0]["cancelled_at"])
+
     def test_forgot_password_updates_credentials(self) -> None:
         response = self.client.post(
             "/api/auth/forgot-password",
@@ -342,6 +382,41 @@ class ApiTests(unittest.TestCase):
             json={"email": "student@example.com", "password": "Student456!"},
         )
         self.assertEqual(login_response.status_code, 200)
+
+
+    def test_user_can_update_profile_and_avatar(self) -> None:
+        self.login("student@example.com", "Student123!")
+
+        update_response = self.client.put(
+            "/api/me",
+            json={
+                "name": "Profile Updated User",
+                "date_of_birth": "2004-08-20",
+                "country": "United States",
+                "province": "California",
+                "district": "San Francisco County",
+                "ward": "",
+                "street_address": "1 Market Street",
+                "phone_country_code": "+1",
+                "phone_country_label": "United States",
+                "phone_country_flag": "us",
+                "phone_local_number": "4155550199",
+                "avatar_url": "/static/images/gallery-stage.svg",
+            },
+        )
+
+        self.assertEqual(update_response.status_code, 200)
+        updated_user = update_response.json()
+        self.assertEqual(updated_user["name"], "Profile Updated User")
+        self.assertEqual(updated_user["avatar_url"], "/static/images/gallery-stage.svg")
+        self.assertEqual(updated_user["phone_number"], "+1 4155550199")
+        self.assertEqual(updated_user["phone_country_flag"], "us")
+        self.assertIn("United States", updated_user["permanent_address"])
+
+        me_response = self.client.get("/api/me")
+        self.assertEqual(me_response.status_code, 200)
+        self.assertEqual(me_response.json()["name"], "Profile Updated User")
+        self.assertEqual(me_response.json()["avatar_url"], "/static/images/gallery-stage.svg")
 
 
 if __name__ == "__main__":

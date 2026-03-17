@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>About Us | EventHub Verify</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260317-aboutus-page" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="topbar-brand-row">
+          <a class="brand-mark admin-topbar-link" href="/dashboard" data-testid="about-dashboard-link">EventHub Verify</a>
+          <div class="admin-topbar-nav" data-testid="topbar-about-nav">
+            <span class="admin-topbar-separator" aria-hidden="true">|</span>
+            <a class="admin-nav-button is-active" href="/aboutus" aria-current="page" data-testid="aboutus-link">About Us</a>
+          </div>
+          <div id="admin-topbar-nav" class="admin-topbar-nav hidden" data-testid="admin-topbar-nav">
+            <span class="admin-topbar-separator" aria-hidden="true">|</span>
+            <a class="admin-nav-button" href="/admin/manager" data-testid="admin-manager-link">Manager</a>
+            <span class="admin-topbar-separator" aria-hidden="true">|</span>
+            <a class="admin-nav-button" href="/admin/analytics" data-testid="admin-analytics-link">Chart Analysis</a>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <span class="welcome-text" id="welcome-text">About EventHub Verify</span>
+          <span class="topbar-role-chip hidden" id="about-role-chip" data-testid="user-role-chip">user</span>
+          <a class="secondary-link hidden" id="about-signin-link" href="/">Sign in</a>
+          <div class="account-anchor hidden" id="about-account-anchor">
+            <button class="account-trigger" data-testid="account-trigger" type="button" aria-label="Account">
+              <span data-testid="account-avatar">U</span>
+            </button>
+            <div class="account-menu hidden" data-testid="account-menu">
+              <p class="menu-name" data-testid="account-menu-name">User</p>
+              <p class="menu-email" data-testid="account-menu-email">email@example.com</p>
+              <a class="menu-link" data-testid="account-profile-link" href="/account">Account details</a>
+              <button class="menu-link danger-link" data-testid="account-logout" type="button">Sign out</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="page-shell about-page-shell">
+        <section class="hero-banner hero-banner-editorial about-hero">
+          <div class="hero-copy-block about-hero-copy">
+            <p class="eyebrow">About Us</p>
+            <h1>EventHub Verify keeps event discovery, registration, and admin control in one workflow.</h1>
+            <p class="hero-copy">
+              The project was built for SE113.Q21 to make event information easier to trust, easier to update,
+              and easier to manage from both attendee and admin views.
+            </p>
+          </div>
+          <div class="about-hero-metrics">
+            <article class="admin-card about-metric-card">
+              <p class="eyebrow">Focus</p>
+              <h2>Cleaner event flow</h2>
+              <p class="subtle">Browse events, inspect details, reserve seats, and keep tickets in one place.</p>
+            </article>
+            <article class="admin-card about-metric-card">
+              <p class="eyebrow">Reliability</p>
+              <h2>MongoDB-backed updates</h2>
+              <p class="subtle">Admins can add, edit, and remove event data without hard-coding page content.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="page-section about-section-grid">
+          <article class="admin-card about-card">
+            <p class="eyebrow">What We Help With</p>
+            <h2>For attendees</h2>
+            <ul class="about-list">
+              <li>Find events faster with filters, spotlight slides, and clearer ticket information.</li>
+              <li>Review venue, timing, organizer, and event details before reserving a seat.</li>
+              <li>Track reservations, ticket status, and account information from one account page.</li>
+            </ul>
+          </article>
+
+          <article class="admin-card about-card">
+            <p class="eyebrow">Why It Feels Trustworthy</p>
+            <h2>For the team behind the board</h2>
+            <ul class="about-list">
+              <li>Event details are stored in MongoDB, so edits stay consistent across the site.</li>
+              <li>Admins get a dedicated manager flow for create, edit, delete, and analytics.</li>
+              <li>Revenue, registrations, and audience distribution stay visible from one admin workspace.</li>
+            </ul>
+          </article>
+        </section>
+
+        <section class="page-section about-split-grid">
+          <article class="admin-card about-card about-card-wide">
+            <p class="eyebrow">Website Information</p>
+            <h2>What EventHub Verify is trying to improve</h2>
+            <p class="hero-copy">
+              Instead of treating events as static cards only, EventHub Verify connects discovery, detail pages,
+              registration, admin analytics, and account management into one consistent experience. The goal is to
+              make the product feel closer to a real event platform than a one-screen demo.
+            </p>
+            <div class="about-note-grid">
+              <article>
+                <span>Audience</span>
+                <strong>Students, attendees, and event admins</strong>
+              </article>
+              <article>
+                <span>Project</span>
+                <strong>SE113.Q21 event registration website</strong>
+              </article>
+              <article>
+                <span>Strength</span>
+                <strong>Readable event data, management flow, and analytics in one place</strong>
+              </article>
+            </div>
+          </article>
+
+          <article class="admin-card about-card about-contact-card">
+            <p class="eyebrow">Admin Contact</p>
+            <h2>Truong Thien Phu</h2>
+            <p class="subtle">Primary admin contact for website information, event updates, and support.</p>
+            <div class="about-contact-list">
+              <a class="dashboard-footer-link" href="mailto:thienphu210505@gmail.com">Email: thienphu210505@gmail.com</a>
+              <a class="dashboard-footer-link" href="tel:0365349036">Contact: 0365349036</a>
+              <p class="dashboard-site-footer-copy">Location: Thu Duc, Ho Chi Minh City.</p>
+            </div>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="/static/aboutus.js?v=20260317-aboutus-page"></script>
+  </body>
+</html>

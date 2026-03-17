@@ -18,8 +18,11 @@ from app.schemas import (
     ForgotPasswordInput,
     LoginInput,
     MessageOutput,
+    RegistrationInput,
     UserCreate,
     UserOutput,
+    UserTicketOutput,
+    UserUpdateInput,
 )
 from app.services import EventRegistrationService, ServiceError
 
@@ -130,9 +133,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def dashboard_page() -> FileResponse:
         return page_response("dashboard.html")
 
+    @app.get("/admin/manager", include_in_schema=False)
+    async def admin_manager_page(_: dict = Depends(require_admin)) -> FileResponse:
+        return page_response("dashboard.html")
+
     @app.get("/account", include_in_schema=False)
     async def account_page() -> FileResponse:
         return page_response("account.html")
+
+    @app.get("/aboutus", include_in_schema=False)
+    async def aboutus_page() -> FileResponse:
+        return page_response("aboutus.html")
 
     @app.get("/admin/analytics", include_in_schema=False)
     async def admin_analytics_page(_: dict = Depends(require_admin)) -> FileResponse:
@@ -204,6 +215,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def get_me(user: dict = Depends(require_user)) -> dict:
         return user
 
+    @app.put("/api/me", response_model=UserOutput)
+    async def update_me(
+        payload: UserUpdateInput,
+        service: EventRegistrationService = Depends(get_service),
+        user: dict = Depends(require_user),
+    ) -> dict:
+        return service.update_user_profile(user["id"], payload.model_dump())
+
+    @app.get("/api/me/registrations", response_model=list[UserTicketOutput])
+    async def get_my_registrations(
+        service: EventRegistrationService = Depends(get_service),
+        user: dict = Depends(require_user),
+    ) -> list[dict]:
+        return service.list_user_registrations(user["id"])
+
     @app.get("/api/events", response_model=list[EventOutput])
     async def list_events(
         service: EventRegistrationService = Depends(get_service),
@@ -224,10 +250,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/events/{event_id}/register", response_model=EventOutput)
     async def register_event(
         event_id: int,
+        payload: RegistrationInput | None = None,
         service: EventRegistrationService = Depends(get_service),
         user: dict = Depends(require_user),
     ) -> dict:
-        return service.register_for_event(user["id"], event_id)
+        return service.register_for_event(user["id"], event_id, None if payload is None else payload.model_dump())
 
     @app.delete("/api/events/{event_id}/register", response_model=EventOutput)
     async def cancel_event_registration(

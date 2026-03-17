@@ -1,23 +1,29 @@
 import {
   api,
-  clearNotice,
   escapeHtml,
   formatCurrency,
   formatDateTime,
   fromDatetimeLocal,
   getCurrentUser,
   redirectTo,
+  setupGlobalFooter,
   setupAccountMenu,
-  showNotice,
   showToast,
   toDatetimeLocal,
-} from "/static/shared.js?v=20260316-toast-actions";
+} from "/static/shared.js?v=20260317-global-footer-routes";
 
-const messageBox = document.querySelector("[data-testid='dashboard-message']");
 const eventGrid = document.querySelector("[data-testid='event-grid']");
 const refreshButton = document.querySelector("#refresh-events");
+const eventSearchInput = document.querySelector("#event-search");
+const eventSearchSubmitButton = document.querySelector("#event-search-submit");
+const eventCategoryFilter = document.querySelector("#event-category-filter");
+const eventLocationFilter = document.querySelector("#event-location-filter");
+const eventPriceFilter = document.querySelector("#event-price-filter");
+const eventSortFilter = document.querySelector("#event-sort");
+const eventBoardState = document.querySelector("#event-board-state");
+const eventMatchList = document.querySelector("#event-match-list");
 const welcomeText = document.querySelector("#welcome-text");
-const heroBanner = document.querySelector(".hero-banner.hero-banner-editorial");
+const heroBanner = document.querySelector(".hero-banner.hero-banner-stage");
 const eventCount = document.querySelector("[data-testid='event-count']");
 const roleChip = document.querySelector("[data-testid='user-role-chip']");
 const dashboardConsole = document.querySelector("#dashboard-console");
@@ -56,6 +62,7 @@ const adminImageFilesInput = document.querySelector("#admin-image-files");
 const adminImageDropzone = document.querySelector("#admin-image-dropzone");
 
 const DEFAULT_EVENT_IMAGE = "/static/images/default-event.svg";
+const currentPath = window.location.pathname;
 
 const EVENT_SLIDE_INTERVAL_MS = 6000;
 
@@ -73,6 +80,14 @@ const state = {
   adminDraggedImageIndex: null,
   adminDropImageIndex: null,
   adminActiveView: "event-board",
+  eventFilters: {
+    search: "",
+    category: "",
+    location: "",
+    pricing: "",
+    sort: "soonest",
+  },
+  hasSubmittedSearch: false,
 };
 
 function toTitleCase(value) {
@@ -89,10 +104,214 @@ function excerpt(text, maxLength = 120) {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}...` : text;
 }
 
+function parseLineList(value) {
+  return String(value || "")
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function formatLineList(values) {
+  return Array.isArray(values) ? values.filter(Boolean).join("\n") : "";
+}
+
+function formatTicketTypes(ticketTypes) {
+  if (!Array.isArray(ticketTypes) || !ticketTypes.length) {
+    return "";
+  }
+
+  return ticketTypes
+    .map((ticket) => {
+      const numericPrice = Number(ticket.price || 0);
+      const price = Number.isInteger(numericPrice) ? String(numericPrice) : numericPrice.toFixed(2);
+      return [ticket.label, price, ticket.details || ""].join(" | ");
+    })
+    .join("\n");
+}
+
+function parseTicketTypes(value, fallbackPrice = 0) {
+  const lines = parseLineList(value);
+  if (!lines.length) {
+    return [];
+  }
+
+  return lines
+    .map((line) => {
+      const [labelPart = "", pricePart = "", detailsPart = ""] = line.split("|").map((part) => part.trim());
+      const numericPrice = Number(pricePart || fallbackPrice || 0);
+      return {
+        label: labelPart,
+        price: Number.isFinite(numericPrice) ? numericPrice : Number(fallbackPrice || 0),
+        details: detailsPart,
+      };
+    })
+    .filter((ticket) => ticket.label);
+}
+
+function fromDatetimeLocalOptional(value) {
+  return value ? fromDatetimeLocal(value) : "";
+}
+
 function formatPercent(value) {
   const numeric = Number(value || 0);
   const digits = Number.isInteger(numeric) ? 0 : 1;
   return `${numeric.toFixed(digits)}%`;
+}
+
+function getAnalyticsEventId(event) {
+  return Number(event?.event_id ?? event?.id ?? 0);
+}
+
+function sortVisibleEvents(events, sortKey) {
+  const nextEvents = [...events];
+  if (sortKey === "latest") {
+    return nextEvents.sort((first, second) => new Date(second.start_at).getTime() - new Date(first.start_at).getTime());
+  }
+  if (sortKey === "price-high") {
+    return nextEvents.sort((first, second) => Number(second.price || 0) - Number(first.price || 0));
+  }
+  if (sortKey === "seats-low") {
+    return nextEvents.sort((first, second) => Number(first.seats_left || 0) - Number(second.seats_left || 0));
+  }
+  return nextEvents.sort((first, second) => new Date(first.start_at).getTime() - new Date(second.start_at).getTime());
+}
+
+function getVisibleEvents() {
+  return sortVisibleEvents(state.events, "soonest");
+}
+
+function getMatchedEvents() {
+  const filters = state.eventFilters;
+  const searchTerm = filters.search.trim().toLowerCase();
+  if (!state.hasSubmittedSearch) {
+    return sortVisibleEvents(state.events, filters.sort || "soonest");
+  }
+
+  const filteredEvents = state.events.filter((event) => {
+    const matchesSearch =
+      !searchTerm ||
+      [event.title, event.description, event.location, event.category, event.organizer_name]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(searchTerm));
+    const matchesCategory = !filters.category || event.category === filters.category;
+    const matchesLocation = !filters.location || event.location === filters.location;
+    const matchesPricing =
+      !filters.pricing ||
+      (filters.pricing === "free" ? Number(event.price || 0) <= 0 : Number(event.price || 0) > 0);
+    return matchesSearch && matchesCategory && matchesLocation && matchesPricing;
+  });
+
+  return sortVisibleEvents(filteredEvents, filters.sort || "soonest");
+}
+
+function updateSelectOptions(select, values, preferredValue = "", allLabel = "All") {
+  if (!(select instanceof HTMLSelectElement)) {
+    return;
+  }
+
+  const options = ["", ...values];
+  select.innerHTML = options
+    .map((value, index) => `<option value="${escapeHtml(value)}">${escapeHtml(value || allLabel)}</option>`)
+    .join("");
+  select.value = options.includes(preferredValue) ? preferredValue : "";
+}
+
+function renderEventFilters() {
+  const categories = [...new Set(state.events.map((event) => event.category).filter(Boolean))].sort();
+  const locations = [...new Set(state.events.map((event) => event.location).filter(Boolean))].sort();
+  updateSelectOptions(eventCategoryFilter, categories, state.eventFilters.category, "All categories");
+  updateSelectOptions(eventLocationFilter, locations, state.eventFilters.location, "All locations");
+  if (eventSearchInput) {
+    eventSearchInput.value = state.eventFilters.search;
+  }
+  if (eventPriceFilter) {
+    eventPriceFilter.value = state.eventFilters.pricing;
+  }
+  if (eventSortFilter) {
+    eventSortFilter.value = state.eventFilters.sort;
+  }
+}
+
+function renderEventBoardState() {
+  if (!eventBoardState) {
+    return;
+  }
+
+  if (!state.events.length) {
+    eventBoardState.textContent = "No events are available yet.";
+    return;
+  }
+
+  const matchedEvents = getMatchedEvents();
+  if (!matchedEvents.length) {
+    eventBoardState.textContent = "No events match the current search and filter settings.";
+    return;
+  }
+
+  if (matchedEvents.length === state.events.length) {
+    eventBoardState.textContent = `Showing all ${matchedEvents.length} events.`;
+    return;
+  }
+
+  eventBoardState.textContent = `Showing ${matchedEvents.length} of ${state.events.length} events.`;
+}
+
+function buildEventMatchMarkup(event) {
+  const registrationAction = event.is_registered
+    ? `<button class="secondary-button" data-action="cancel" data-id="${event.id}" type="button">Cancel reservation</button>`
+    : `<button class="primary-button" data-action="register" data-id="${event.id}" type="button" ${event.seats_left === 0 ? "disabled" : ""}>Reserve now</button>`;
+  return `
+    <article class="event-match-card" data-testid="event-match-${event.id}">
+      <div class="event-match-copy">
+        <div>
+          <h3>${escapeHtml(event.title)}</h3>
+          <p class="event-match-time">${escapeHtml(formatDateTime(event.start_at))}</p>
+        </div>
+        <dl class="event-match-meta">
+          <div>
+            <dt>Location</dt>
+            <dd>${escapeHtml(event.location)}</dd>
+          </div>
+          <div>
+            <dt>Price</dt>
+            <dd>${escapeHtml(formatCurrency(event.price))} / ticket</dd>
+          </div>
+        </dl>
+      </div>
+      <div class="event-match-actions">
+        <a class="detail-link" data-testid="event-match-detail-${event.id}" href="/events/${event.id}/view">View detail</a>
+        ${registrationAction}
+      </div>
+    </article>
+  `;
+}
+
+function renderEventMatchList() {
+  if (!eventMatchList) {
+    return;
+  }
+
+  eventMatchList.classList.remove("is-placeholder");
+
+  if (!state.events.length) {
+    eventMatchList.classList.add("is-placeholder");
+    eventMatchList.innerHTML = '<article class="event-match-empty"><strong>No event available</strong><p>The explore panel will fill up once events are added to the board.</p></article>';
+    return;
+  }
+
+  const matchedEvents = getMatchedEvents();
+  if (!matchedEvents.length) {
+    eventMatchList.classList.add("is-placeholder");
+    eventMatchList.innerHTML = '<article class="event-match-empty"><strong>No event available</strong><p>Try a broader search term or clear one of the filters, then press Search again.</p></article>';
+    return;
+  }
+
+  eventMatchList.innerHTML = matchedEvents.map((event) => buildEventMatchMarkup(event)).join("");
+}
+
+function renderEventSearchPanel() {
+  renderEventBoardState();
+  renderEventMatchList();
 }
 
 function setAdminView(view = "event-board") {
@@ -142,6 +361,15 @@ function getEventImages(event) {
 
 function getPrimaryEventImage(event) {
   return getEventImages(event)[0] || DEFAULT_EVENT_IMAGE;
+}
+
+function setHeroBannerBackground(event) {
+  if (!heroBanner) {
+    return;
+  }
+
+  const image = event ? getPrimaryEventImage(event) : "";
+  heroBanner.style.setProperty("--hero-event-image", image ? `url("${image}")` : "none");
 }
 
 function setAdminDraftImages(images) {
@@ -457,7 +685,7 @@ function clearEventSlideTimer() {
   if (state.eventSlideTimerId === null) {
     return;
   }
-  window.clearInterval(state.eventSlideTimerId);
+  window.clearTimeout(state.eventSlideTimerId);
   state.eventSlideTimerId = null;
 }
 
@@ -465,15 +693,8 @@ function buildEventSlideMarkup(event) {
   const registrationAction = event.is_registered
     ? `<button class="secondary-button" data-action="cancel" data-id="${event.id}" type="button">Cancel reservation</button>`
     : `<button class="primary-button" data-action="register" data-id="${event.id}" type="button" ${event.seats_left === 0 ? "disabled" : ""}>Reserve now</button>`;
-  const adminActions =
-    state.user?.role === "admin"
-      ? `
-          <button class="secondary-button" data-action="edit" data-id="${event.id}" type="button">Edit</button>
-          <button class="secondary-button danger-button" data-action="delete" data-id="${event.id}" type="button">Delete</button>
-          <button class="secondary-button" data-action="attendees" data-id="${event.id}" type="button">Attendees</button>
-        `
-      : "";
-
+  const deadlineLabel = event.registration_deadline ? `Register by ${formatDateTime(event.registration_deadline)}` : "Open registration";
+  const seatWarning = event.seats_left > 0 && event.seats_left <= 3 ? `<span class="pill pill-warning">Only ${escapeHtml(String(event.seats_left))} seats left</span>` : "";
   return `
     <section class="event-slide is-active" data-slide-id="${event.id}" data-testid="event-slide-${event.id}">
       <article class="event-card event-card-editorial event-card-editorial-compact" data-testid="event-card-${event.id}">
@@ -486,6 +707,12 @@ function buildEventSlideMarkup(event) {
             </div>
             <span class="event-price-badge">${escapeHtml(formatCurrency(event.price))} / ticket</span>
           </div>
+          <div class="card-pills">
+            <span class="pill">${escapeHtml(event.category || "Event")}</span>
+            <span class="pill">${escapeHtml(event.event_format || "Offline")}</span>
+            <span class="pill">${escapeHtml(deadlineLabel)}</span>
+            ${seatWarning}
+          </div>
           <p class="hero-copy event-summary">${escapeHtml(excerpt(event.description, 140))}</p>
           <div class="event-slide-facts">
             <article>
@@ -497,14 +724,13 @@ function buildEventSlideMarkup(event) {
               <strong>${escapeHtml(event.location)}</strong>
             </article>
             <article>
-              <span>Seats left</span>
-              <strong data-testid="event-seats-${event.id}">${event.seats_left}/${event.capacity}</strong>
+              <span>Organizer</span>
+              <strong>${escapeHtml(event.organizer_name || "EventHub Verify Studio")}</strong>
             </article>
           </div>
           <div class="button-row">
             <a class="detail-link" data-testid="detail-link-${event.id}" href="/events/${event.id}/view">View detail</a>
             ${registrationAction}
-            ${adminActions}
           </div>
         </div>
       </article>
@@ -518,22 +744,28 @@ function updateEventSlidePosition(restartTimer = false) {
 
 function startEventSlideTimer() {
   clearEventSlideTimer();
-  if (state.events.length <= 1) {
+  const visibleEvents = getVisibleEvents();
+  if (visibleEvents.length <= 1) {
+    return;
+  }
+  if (state.user?.role === "admin" && state.adminActiveView !== "event-board") {
     return;
   }
 
-  state.eventSlideTimerId = window.setInterval(() => {
-    state.eventSlideIndex = (state.eventSlideIndex + 1) % state.events.length;
+  state.eventSlideTimerId = window.setTimeout(() => {
+    state.eventSlideIndex = (state.eventSlideIndex + 1) % visibleEvents.length;
     updateEventSlidePosition(false);
+    startEventSlideTimer();
   }, EVENT_SLIDE_INTERVAL_MS);
 }
 
 function goToEventSlide(index, restartTimer = true) {
-  if (!state.events.length) {
+  const visibleEvents = getVisibleEvents();
+  if (!visibleEvents.length) {
     return;
   }
 
-  const total = state.events.length;
+  const total = visibleEvents.length;
   state.eventSlideIndex = ((index % total) + total) % total;
   updateEventSlidePosition(false);
   if (restartTimer) {
@@ -542,28 +774,51 @@ function goToEventSlide(index, restartTimer = true) {
 }
 
 function renderEventGrid(options = {}) {
+  if (!eventGrid || !eventCount) {
+    return;
+  }
+
+  const visibleEvents = getVisibleEvents();
   const { restartTimer = true } = options;
   if (restartTimer) {
     clearEventSlideTimer();
   }
 
   if (!state.events.length) {
-    eventGrid.innerHTML = "<p>No events available yet.</p>";
+    setHeroBannerBackground(null);
+    eventGrid.innerHTML = '<section class="admin-card ticket-empty-state"><p class="eyebrow">Empty board</p><h3>No events available yet</h3><p class="subtle">The board will fill up as soon as an admin adds events to MongoDB.</p></section>';
     eventCount.textContent = "0";
     state.eventSlideIndex = 0;
     return;
   }
 
-  state.eventSlideIndex = Math.min(state.eventSlideIndex, state.events.length - 1);
-  eventCount.textContent = String(state.events.length);
-  const activeEvent = state.events[state.eventSlideIndex];
+  if (!visibleEvents.length) {
+    setHeroBannerBackground(null);
+    eventGrid.innerHTML = '<section class="admin-card ticket-empty-state"><p class="eyebrow">No match</p><h3>No events fit this search</h3><p class="subtle">Try clearing one filter, changing the sort, or using a broader search term.</p></section>';
+    eventCount.textContent = "0";
+    state.eventSlideIndex = 0;
+    return;
+  }
+
+  state.eventSlideIndex = Math.min(state.eventSlideIndex, visibleEvents.length - 1);
+  eventCount.textContent = String(visibleEvents.length);
+  const activeEvent = visibleEvents[state.eventSlideIndex];
+  setHeroBannerBackground(activeEvent);
   eventGrid.innerHTML = `
     <div class="event-slider-shell" data-testid="event-slider-shell">
       <div class="event-slider-stage" aria-live="polite">
+        ${visibleEvents.length > 1 ? `
+          <button class="event-slide-nav is-prev" data-slide-nav="prev" type="button" aria-label="Previous event">
+            <span aria-hidden="true">&#8592;</span>
+          </button>
+          <button class="event-slide-nav is-next" data-slide-nav="next" type="button" aria-label="Next event">
+            <span aria-hidden="true">&#8594;</span>
+          </button>
+        ` : ""}
         ${buildEventSlideMarkup(activeEvent)}
       </div>
       <div class="event-slide-dots" data-role="event-slide-dots">
-        ${state.events
+        ${visibleEvents
           .map(
             (event, index) => `
               <button
@@ -608,10 +863,22 @@ function fillAdminForm(event) {
   document.querySelector("#admin-title").value = event.title;
   document.querySelector("#admin-location").value = event.location;
   document.querySelector("#admin-description").value = event.description;
+  document.querySelector("#admin-category").value = event.category || "";
+  document.querySelector("#admin-event-format").value = event.event_format || "Offline";
   document.querySelector("#admin-venue-details").value = event.venue_details || "";
   document.querySelector("#admin-start-at").value = toDatetimeLocal(event.start_at);
+  document.querySelector("#admin-registration-deadline").value = event.registration_deadline ? toDatetimeLocal(event.registration_deadline) : "";
   document.querySelector("#admin-capacity").value = event.capacity;
   document.querySelector("#admin-price").value = event.price;
+  document.querySelector("#admin-organizer-name").value = event.organizer_name || "";
+  document.querySelector("#admin-organizer-details").value = event.organizer_details || "";
+  document.querySelector("#admin-speaker-lineup").value = formatLineList(event.speaker_lineup || []);
+  document.querySelector("#admin-ticket-types").value = formatTicketTypes(event.ticket_types || []);
+  document.querySelector("#admin-map-url").value = event.map_url || "";
+  document.querySelector("#admin-contact-email").value = event.contact_email || "";
+  document.querySelector("#admin-contact-phone").value = event.contact_phone || "";
+  document.querySelector("#admin-refund-policy").value = event.refund_policy || "";
+  document.querySelector("#admin-check-in-policy").value = event.check_in_policy || "";
   setAdminDraftImages(getEventImages(event).filter((image) => image !== DEFAULT_EVENT_IMAGE));
   clearAdminImagePicker();
   renderAdminImageEditor(
@@ -628,6 +895,18 @@ function resetAdminForm() {
   adminForm.reset();
   document.querySelector("#admin-event-id").value = "";
   document.querySelector("#admin-price").value = 0;
+  document.querySelector("#admin-event-format").value = "Offline";
+  document.querySelector("#admin-registration-deadline").value = "";
+  document.querySelector("#admin-category").value = "";
+  document.querySelector("#admin-organizer-name").value = "";
+  document.querySelector("#admin-organizer-details").value = "";
+  document.querySelector("#admin-speaker-lineup").value = "";
+  document.querySelector("#admin-ticket-types").value = "";
+  document.querySelector("#admin-map-url").value = "";
+  document.querySelector("#admin-contact-email").value = "";
+  document.querySelector("#admin-contact-phone").value = "";
+  document.querySelector("#admin-refund-policy").value = "";
+  document.querySelector("#admin-check-in-policy").value = "";
   setAdminDraftImages([]);
   clearAdminImagePicker();
   renderAdminImageEditor();
@@ -763,7 +1042,9 @@ function renderAnalytics() {
 
 async function loadEvents() {
   state.events = await api("/api/events");
+  renderEventFilters();
   renderEventGrid();
+  renderEventSearchPanel();
   renderAdminManagerList();
 }
 
@@ -785,6 +1066,7 @@ async function refreshDashboardData() {
 
 function updateEventInState(updatedEvent) {
   state.events = state.events.map((event) => (event.id === updatedEvent.id ? { ...event, ...updatedEvent } : event));
+  renderEventSearchPanel();
   renderAdminManagerList();
 }
 
@@ -828,8 +1110,12 @@ async function handleGridAction(target) {
     await api(`/api/admin/events/${eventId}`, { method: "DELETE" });
     state.attendees = [];
     renderAttendees("Select an event and click \"Attendees\".");
-    showNotice(messageBox, "Event deleted.");
+    showToast("Event deleted.");
+    try {
     await refreshDashboardData();
+  } catch (error) {
+    showToast(error.message, "error");
+  }
     return;
   }
 
@@ -841,16 +1127,28 @@ async function handleGridAction(target) {
 
 async function handleAdminSubmit(event) {
   event.preventDefault();
-  clearNotice(messageBox);
   const eventId = document.querySelector("#admin-event-id").value;
+  const price = Number(document.querySelector("#admin-price").value);
   const payload = {
     title: document.querySelector("#admin-title").value,
     location: document.querySelector("#admin-location").value,
     description: document.querySelector("#admin-description").value,
+    category: document.querySelector("#admin-category").value,
+    event_format: document.querySelector("#admin-event-format").value,
     venue_details: document.querySelector("#admin-venue-details").value,
     start_at: fromDatetimeLocal(document.querySelector("#admin-start-at").value),
+    registration_deadline: fromDatetimeLocalOptional(document.querySelector("#admin-registration-deadline").value),
     capacity: Number(document.querySelector("#admin-capacity").value),
-    price: Number(document.querySelector("#admin-price").value),
+    price,
+    organizer_name: document.querySelector("#admin-organizer-name").value,
+    organizer_details: document.querySelector("#admin-organizer-details").value,
+    speaker_lineup: parseLineList(document.querySelector("#admin-speaker-lineup").value),
+    ticket_types: parseTicketTypes(document.querySelector("#admin-ticket-types").value, price),
+    map_url: document.querySelector("#admin-map-url").value,
+    contact_email: document.querySelector("#admin-contact-email").value,
+    contact_phone: document.querySelector("#admin-contact-phone").value,
+    refund_policy: document.querySelector("#admin-refund-policy").value,
+    check_in_policy: document.querySelector("#admin-check-in-policy").value,
     image_url: state.adminDraftImages[0] || "",
     image_urls: state.adminDraftImages,
     opening_highlights: document.querySelector("#admin-opening-highlights").value,
@@ -863,10 +1161,10 @@ async function handleAdminSubmit(event) {
   try {
     await api(url, { method, body: JSON.stringify(payload) });
     closeAdminModal();
-    showNotice(messageBox, eventId ? "Event updated successfully." : "Event created successfully.");
+    showToast(eventId ? "Event updated successfully." : "Event created successfully.");
     await refreshDashboardData();
   } catch (error) {
-    showNotice(messageBox, error.message, "error");
+    showToast(error.message, "error");
   }
 }
 
@@ -878,18 +1176,43 @@ async function boot() {
   }
 
   setupAccountMenu(state.user);
+  setupGlobalFooter(state.user);
   welcomeText.textContent = `Welcome, ${state.user.name}`;
   roleChip.textContent = toTitleCase(state.user.role);
   document.querySelector("#admin-price").value = 0;
   renderAdminImageEditor();
   renderAttendees("Select an event and click \"Attendees\".");
-  setAdminView("event-board");
+  const initialAdminView = state.user.role === "admin" && currentPath === "/admin/manager" ? "manager" : "event-board";
+  document.title = initialAdminView === "manager" ? "Admin Manager | EventHub Verify" : "Dashboard | EventHub Verify";
+  setAdminView(initialAdminView);
 
   refreshButton.addEventListener("click", async () => {
-    clearNotice(messageBox);
-    await refreshDashboardData();
-    showNotice(messageBox, "Event board refreshed.");
+    try {
+      await refreshDashboardData();
+      showToast("Event board refreshed.");
+    } catch (error) {
+      showToast(error.message, "error");
+    }
   });
+
+  const applyBoardFilters = () => {
+    state.eventFilters.search = eventSearchInput?.value.trim() || "";
+    state.eventFilters.category = eventCategoryFilter?.value || "";
+    state.eventFilters.location = eventLocationFilter?.value || "";
+    state.eventFilters.pricing = eventPriceFilter?.value || "";
+    state.eventFilters.sort = eventSortFilter?.value || "soonest";
+    state.hasSubmittedSearch = true;
+    renderEventSearchPanel();
+  };
+
+  eventSearchInput?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") {
+      return;
+    }
+    event.preventDefault();
+    applyBoardFilters();
+  });
+  eventSearchSubmitButton?.addEventListener("click", applyBoardFilters);
 
   eventGrid.addEventListener("click", async (event) => {
     const target = event.target;
@@ -903,25 +1226,42 @@ async function boot() {
       return;
     }
 
+    const slideNav = target.closest("[data-slide-nav]");
+    if (slideNav instanceof HTMLElement) {
+      const direction = slideNav.dataset.slideNav === "prev" ? -1 : 1;
+      goToEventSlide(state.eventSlideIndex + direction);
+      return;
+    }
+
     const actionTarget = target.closest("[data-action]");
     if (!(actionTarget instanceof HTMLElement)) {
       return;
     }
 
     try {
-      clearNotice(messageBox);
-      await handleGridAction(actionTarget);
+          await handleGridAction(actionTarget);
     } catch (error) {
-      showNotice(messageBox, error.message, "error");
+      showToast(error.message, "error");
     }
   });
 
-  eventGrid.addEventListener("mouseenter", () => {
-    clearEventSlideTimer();
-  });
 
-  eventGrid.addEventListener("mouseleave", () => {
-    startEventSlideTimer();
+  eventMatchList?.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    const actionButton = target.closest("[data-action]");
+    if (!(actionButton instanceof HTMLElement)) {
+      return;
+    }
+
+    try {
+      await handleGridAction(actionButton);
+    } catch (error) {
+      showToast(error.message, "error");
+    }
   });
 
   adminManagerList?.addEventListener("click", async (event) => {
@@ -936,33 +1276,10 @@ async function boot() {
     }
 
     try {
-      clearNotice(messageBox);
-      await handleGridAction(actionTarget);
+          await handleGridAction(actionTarget);
     } catch (error) {
-      showNotice(messageBox, error.message, "error");
+      showToast(error.message, "error");
     }
-  });
-
-  adminBrandTrigger?.addEventListener("click", (event) => {
-    if (state.user?.role !== "admin") {
-      return;
-    }
-    event.preventDefault();
-    setAdminView("event-board");
-  });
-
-  adminTopbarNav?.addEventListener("click", (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLElement)) {
-      return;
-    }
-
-    const viewButton = target.closest("[data-admin-view]");
-    if (!(viewButton instanceof HTMLElement)) {
-      return;
-    }
-
-    setAdminView(viewButton.dataset.adminView || "event-board");
   });
 
   analyticsEventGrid?.addEventListener("click", (event) => {
@@ -975,13 +1292,14 @@ async function boot() {
     const toggleTarget = target.closest('[data-action="toggle-event-analytics"]');
     if (toggleTarget instanceof HTMLElement) {
       state.analyticsSidebarOpen = !state.analyticsSidebarOpen;
-      if (!state.analyticsSidebarOpen) {
-        state.selectedAnalyticsEventId = null;
-      } else if (
-        state.selectedAnalyticsEventId === null ||
-        !analyticsEvents.some((analyticsEvent) => analyticsEvent.id === state.selectedAnalyticsEventId)
+      if (
+        state.analyticsSidebarOpen &&
+        (
+          state.selectedAnalyticsEventId === null ||
+          !analyticsEvents.some((analyticsEvent) => getAnalyticsEventId(analyticsEvent) === state.selectedAnalyticsEventId)
+        )
       ) {
-        state.selectedAnalyticsEventId = analyticsEvents[0]?.id ?? null;
+        state.selectedAnalyticsEventId = analyticsEvents.length ? getAnalyticsEventId(analyticsEvents[0]) : null;
       }
       renderAnalytics();
       return;
@@ -997,7 +1315,7 @@ async function boot() {
       return;
     }
 
-    state.selectedAnalyticsEventId = state.selectedAnalyticsEventId === eventId ? null : eventId;
+    state.selectedAnalyticsEventId = eventId;
     renderAnalytics();
   });
 
@@ -1148,7 +1466,7 @@ async function boot() {
     document.querySelector("#admin-reset").addEventListener("click", () => {
       resetAdminForm();
       setAdminModalCopy("create");
-      showNotice(messageBox, "Admin form reset.");
+      showToast("Admin form reset.");
     });
   }
 
