@@ -1,0 +1,32 @@
+# Requirements for running this project on a CUDA-backed Linux VM such as Vast.
+# Recommended: Python 3.10
+# Install with:
+#   python -m pip install -r requirements.txt
+
+--extra-index-url https://download.pytorch.org/whl/cu128
+
+# Core numerical stack
+numpy==1.26.4
+
+# Imaging
+pillow==10.4.0
+
+# PyTorch CUDA stack
+torch==2.10.0+cu128
+torchvision==0.25.0+cu128
+torchaudio==2.10.0+cu128
+
+# Hugging Face / Qwen
+accelerate>=1.2.1
+huggingface_hub==0.27.1
+safetensors>=0.4.5
+transformers>=4.57.0
+qwen-vl-utils>=0.0.14
+
+# Layout detection
+onnx==1.20.1
+onnxruntime-gpu==1.23.2
+ultralytics==8.2.103
+
+# Plotting / debug utilities
+matplotlib==3.10.8
