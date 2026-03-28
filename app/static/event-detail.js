@@ -11,11 +11,12 @@ import {
   setupAccountMenu,
   showNotice,
   showToast,
-} from "/static/shared.js?v=20260317-global-footer-routes";
+} from "/static/shared.js?v=20260328-location-coordinates";
 
 const messageBox = document.querySelector("[data-testid='detail-message']");
 const detailTitle = document.querySelector("[data-testid='detail-title']");
 const detailDescription = document.querySelector("#detail-description");
+const detailDescriptionBlock = document.querySelector("#detail-description-block");
 const detailGalleryTrack = document.querySelector("#detail-gallery-track");
 const detailGalleryDots = document.querySelector("#detail-gallery-dots");
 const detailGalleryPrev = document.querySelector("#detail-gallery-prev");
@@ -25,8 +26,9 @@ const detailPriceChip = document.querySelector("#detail-price-chip");
 const detailLocationChip = document.querySelector("#detail-location-chip");
 const detailAttendees = document.querySelector("[data-testid='event-attendees']");
 const detailSeats = document.querySelector("[data-testid='event-seats']");
-const detailLocation = document.querySelector("#detail-location");
-const detailVenueDetails = document.querySelector("#detail-venue-details");
+const detailMapPreview = document.querySelector("#detail-map-preview");
+const detailMapFrame = document.querySelector("#detail-map-frame");
+const detailMapFallback = document.querySelector("#detail-map-fallback");
 const detailStartAt = document.querySelector("#detail-start-at");
 const detailCategoryBadge = document.querySelector("#detail-category-badge");
 const detailFormatBadge = document.querySelector("#detail-format-badge");
@@ -49,14 +51,17 @@ const detailRegistrationModal = document.querySelector("#detail-registration-mod
 const detailRegistrationClose = document.querySelector("#detail-registration-close");
 const detailRegistrationCancel = document.querySelector("#detail-registration-cancel");
 const detailRegistrationForm = document.querySelector("#detail-registration-form");
-const detailRegistrationTicket = document.querySelector("#detail-registration-ticket");
+const detailRegistrationQuantity = document.querySelector("#detail-registration-quantity");
 const detailRegistrationName = document.querySelector("#detail-registration-name");
 const detailRegistrationEmail = document.querySelector("#detail-registration-email");
 const detailRegistrationPhone = document.querySelector("#detail-registration-phone");
 const detailRegistrationSummary = document.querySelector("#detail-registration-summary");
+const detailRegistrationQuantityFocus = document.querySelector("#detail-registration-quantity-focus");
+const detailRegistrationPriceFocus = document.querySelector("#detail-registration-price-focus");
 const attendeeSection = document.querySelector("[data-testid='detail-attendee-section']");
 const attendeeList = document.querySelector("#detail-attendee-list");
 const loadAttendeesButton = document.querySelector("#detail-load-attendees");
+const detailLayout = document.querySelector(".detail-layout");
 const detailPosterRail = document.querySelector(".detail-poster-rail");
 const detailPoster = document.querySelector(".detail-poster");
 const desktopPosterMedia = window.matchMedia("(min-width: 880px)");
@@ -156,24 +161,55 @@ function renderGallery() {
 }
 
 function syncDetailPosterRail() {
-  if (!detailPosterRail || !detailPoster) {
+  if (!detailPosterRail) {
     return;
   }
 
-  if (!desktopPosterMedia.matches) {
-    detailPosterRail.classList.remove("is-fixed");
-    detailPosterRail.style.removeProperty("--detail-poster-left");
-    detailPosterRail.style.removeProperty("--detail-poster-width");
-    detailPosterRail.style.removeProperty("--detail-poster-height");
-    return;
-  }
+  detailPosterRail.classList.remove("is-fixed");
+  detailPosterRail.style.removeProperty("--detail-poster-left");
+  detailPosterRail.style.removeProperty("--detail-poster-width");
+  detailPosterRail.style.removeProperty("--detail-poster-height");
+  detailLayout?.style.removeProperty("--detail-layout-min-height");
+}
 
-  const railRect = detailPosterRail.getBoundingClientRect();
-  const posterHeight = Math.max(380, Math.min(window.innerHeight - 160, 620));
-  detailPosterRail.style.setProperty("--detail-poster-left", `${Math.round(railRect.left)}px`);
-  detailPosterRail.style.setProperty("--detail-poster-width", `${Math.round(railRect.width)}px`);
-  detailPosterRail.style.setProperty("--detail-poster-height", `${Math.round(posterHeight)}px`);
-  detailPosterRail.classList.add("is-fixed");
+function buildDetailMapQuery(event) {
+  return [event?.location, event?.venue_details].filter(Boolean).join(", ").trim();
+}
+
+function hasDetailCoordinates(event) {
+  const latitude = Number(event?.latitude);
+  const longitude = Number(event?.longitude);
+  return Number.isFinite(latitude) && Number.isFinite(longitude);
+}
+
+function buildDetailMapEmbedUrl(event, query) {
+  if (hasDetailCoordinates(event)) {
+    return `https://www.google.com/maps?q=${encodeURIComponent(`${Number(event.latitude)},${Number(event.longitude)}`)}&z=16&output=embed`;
+  }
+  return `https://www.google.com/maps?q=${encodeURIComponent(query)}&z=15&output=embed`;
+}
+
+function buildDetailMapOpenUrl(event, query) {
+  const explicitUrl = String(event?.map_url || "").trim();
+  if (explicitUrl) {
+    return explicitUrl;
+  }
+  if (hasDetailCoordinates(event)) {
+    return `https://www.google.com/maps/search/?api=1&query=${Number(event.latitude)},${Number(event.longitude)}`;
+  }
+  return `https://www.google.com/maps?q=${encodeURIComponent(query)}`;
+}
+
+function shouldAutoOpenRegistration() {
+  return new URLSearchParams(window.location.search).get("reserve") === "1";
+}
+
+function clearAutoOpenRegistrationFlag() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("reserve");
+  const nextSearch = url.searchParams.toString();
+  const nextUrl = `${url.pathname}${nextSearch ? `?${nextSearch}` : ""}${url.hash}`;
+  window.history.replaceState({}, "", nextUrl);
 }
 
 function renderSpeakerList(speakers) {
@@ -214,16 +250,36 @@ function renderRegistrationSummary() {
   if (!detailRegistrationSummary || !state.event) {
     return;
   }
-  const ticketLabel = detailRegistrationTicket?.value || state.event.ticket_types?.[0]?.label || "General Admission";
-  const ticket = (state.event.ticket_types || []).find((item) => item.label === ticketLabel) || state.event.ticket_types?.[0] || { label: ticketLabel, price: state.event.price, details: "" };
+  const maxQuantity = Math.max(1, Math.min(5, Number(state.event.seats_left || 0) || 1));
+  const requestedQuantity = Number(detailRegistrationQuantity?.value || 1);
+  const quantity = Math.max(1, Math.min(maxQuantity, Number.isFinite(requestedQuantity) ? requestedQuantity : 1));
+  if (detailRegistrationQuantity) {
+    detailRegistrationQuantity.value = String(quantity);
+    detailRegistrationQuantity.max = String(maxQuantity);
+  }
+  const pricePerTicket = Number(state.event.price || state.event.ticket_types?.[0]?.price || 0);
+  const totalPrice = pricePerTicket * quantity;
+
+  if (detailRegistrationQuantityFocus) {
+    detailRegistrationQuantityFocus.innerHTML = `
+      <span>Quantity</span>
+      <strong>${escapeHtml(String(quantity))} ticket${quantity > 1 ? "s" : ""}</strong>
+      <p class="subtle">Limit ${escapeHtml(String(maxQuantity))} for this event.</p>
+    `;
+  }
+
+  if (detailRegistrationPriceFocus) {
+    detailRegistrationPriceFocus.innerHTML = `
+      <span>Price</span>
+      <strong>${escapeHtml(formatCurrency(pricePerTicket))} per ticket</strong>
+      <p class="subtle">Total ${escapeHtml(formatCurrency(totalPrice))}</p>
+    `;
+  }
+
   detailRegistrationSummary.innerHTML = `
     <article class="detail-registration-summary-item">
       <span>Event</span>
       <strong>${escapeHtml(state.event.title)}</strong>
-    </article>
-    <article class="detail-registration-summary-item">
-      <span>Ticket</span>
-      <strong>${escapeHtml(ticket.label)} - ${escapeHtml(formatCurrency(ticket.price))}</strong>
     </article>
     <article class="detail-registration-summary-item">
       <span>Attendee</span>
@@ -242,9 +298,12 @@ function openRegistrationModal() {
   if (!state.event || state.event.is_registered || !detailRegistrationModal) {
     return;
   }
-  detailRegistrationTicket.innerHTML = (state.event.ticket_types || [])
-    .map((ticket) => `<option value="${escapeHtml(ticket.label)}">${escapeHtml(ticket.label)} - ${escapeHtml(formatCurrency(ticket.price))}</option>`)
-    .join("");
+  const maxQuantity = Math.max(1, Math.min(5, Number(state.event.seats_left || 0) || 1));
+  if (detailRegistrationQuantity) {
+    detailRegistrationQuantity.min = "1";
+    detailRegistrationQuantity.max = String(maxQuantity);
+    detailRegistrationQuantity.value = "1";
+  }
   detailRegistrationName.value = state.user?.name || "";
   detailRegistrationEmail.value = state.user?.email || "";
   detailRegistrationPhone.value = state.user?.phone_number || "";
@@ -253,6 +312,7 @@ function openRegistrationModal() {
   detailRegistrationModal.setAttribute("aria-hidden", "false");
   document.body.classList.add("modal-open");
   state.registrationOpen = true;
+  detailRegistrationQuantity?.focus();
 }
 
 function closeRegistrationModal() {
@@ -260,6 +320,15 @@ function closeRegistrationModal() {
   detailRegistrationModal?.setAttribute("aria-hidden", "true");
   document.body.classList.remove("modal-open");
   state.registrationOpen = false;
+  if (detailRegistrationSummary) {
+    detailRegistrationSummary.innerHTML = "";
+  }
+  if (detailRegistrationQuantityFocus) {
+    detailRegistrationQuantityFocus.innerHTML = "";
+  }
+  if (detailRegistrationPriceFocus) {
+    detailRegistrationPriceFocus.innerHTML = "";
+  }
 }
 
 function renderEvent() {
@@ -270,28 +339,41 @@ function renderEvent() {
   renderGallery();
   requestAnimationFrame(syncDetailPosterRail);
   detailTitle.textContent = state.event.title;
-  detailDescription.textContent = state.event.description;
+  if (detailDescription) {
+    detailDescription.textContent = "";
+    detailDescription.classList.add("hidden");
+  }
+  if (detailDescriptionBlock) {
+    detailDescriptionBlock.textContent = state.event.description || "Event details will be published soon.";
+  }
   detailPrice.textContent = `${formatCurrency(state.event.price)} per ticket`;
   detailPriceChip.textContent = `${formatCurrency(state.event.price)} / ticket`;
   detailLocationChip.textContent = state.event.location;
   detailAttendees.textContent = `${state.event.registered_count} people`;
   detailSeats.textContent = `${state.event.seats_left}/${state.event.capacity}`;
-  detailLocation.textContent = state.event.location;
-  detailVenueDetails.textContent = state.event.venue_details || state.event.location;
+  const detailMapQuery = buildDetailMapQuery(state.event);
+  const hasMapTarget = Boolean(detailMapQuery || hasDetailCoordinates(state.event));
+  if (detailMapFrame) {
+    detailMapFrame.src = hasMapTarget ? buildDetailMapEmbedUrl(state.event, detailMapQuery) : "";
+    detailMapFrame.classList.toggle("hidden", !hasMapTarget);
+  }
+  if (detailMapPreview) {
+    detailMapPreview.classList.toggle("is-empty", !hasMapTarget);
+  }
+  if (detailMapFallback) {
+    detailMapFallback.classList.toggle("hidden", hasMapTarget);
+    detailMapFallback.textContent = hasMapTarget ? "" : "Map preview will appear here once the venue address is available.";
+  }
   detailStartAt.textContent = formatDateTime(state.event.start_at);
   detailCategoryBadge.textContent = state.event.category || "Special Event";
   detailFormatBadge.textContent = state.event.event_format || "Offline";
   detailDeadlineBadge.textContent = state.event.registration_deadline ? `Register by ${formatDateTime(state.event.registration_deadline)}` : "Registration open";
-  detailOrganizerName.textContent = state.event.organizer_name || "EventHub Verify Studio";
-  detailOrganizerDetails.textContent = state.event.organizer_details || "Organizer details will be announced soon.";
   detailRefundPolicy.textContent = state.event.refund_policy || "Refund policy will be announced soon.";
   detailCheckInPolicy.textContent = state.event.check_in_policy || "Check-in instructions will be announced soon.";
   detailContact.textContent = [state.event.contact_email, state.event.contact_phone].filter(Boolean).join(" - ") || "Support details will be announced soon.";
-  detailMapLink.href = state.event.map_url || "#";
-  detailMapLink.classList.toggle("hidden", !state.event.map_url);
-  detailOpening.textContent = state.event.opening_highlights || "Opening details will be announced soon.";
-  detailMiddle.textContent = state.event.mid_event_highlights || "Main-program details will be announced soon.";
-  detailClosing.textContent = state.event.closing_highlights || "Closing details will be announced soon.";
+  const detailMapOpenUrl = hasMapTarget ? buildDetailMapOpenUrl(state.event, detailMapQuery) : "#";
+  detailMapLink.href = detailMapOpenUrl;
+  detailMapLink.classList.toggle("hidden", !hasMapTarget);
   renderSpeakerList(state.event.speaker_lineup || []);
   renderTicketTypeList(state.event.ticket_types || []);
   detailStatus.textContent = state.event.is_registered ? "Reserved" : "Not reserved yet";
@@ -304,6 +386,19 @@ function renderEvent() {
 async function loadEvent() {
   state.event = await api(`/api/events/${state.eventId}`);
   renderEvent();
+
+  if (shouldAutoOpenRegistration()) {
+    clearAutoOpenRegistrationFlag();
+    if (state.event.is_registered) {
+      showToast("You already have a reservation for this event.");
+      return;
+    }
+    if (state.event.seats_left <= 0) {
+      showToast("No seats left for this event.", "error");
+      return;
+    }
+    openRegistrationModal();
+  }
 }
 
 async function loadAttendees() {
@@ -312,7 +407,7 @@ async function loadAttendees() {
     ? `<ul>${attendees
         .map(
           (attendee) =>
-            `<li>${escapeHtml(attendee.name)} - ${escapeHtml(attendee.email)} - ${escapeHtml(attendee.ticket_label)} - ${escapeHtml(attendee.status)} - ${escapeHtml(attendee.registered_at)}</li>`
+            `<li>${escapeHtml(attendee.name)} - ${escapeHtml(attendee.email)} - ${escapeHtml(String(attendee.quantity || 1))} ticket(s) - ${escapeHtml(attendee.status)} - ${escapeHtml(attendee.registered_at)}</li>`
         )
         .join("")}</ul>`
     : "<p>No attendees registered yet.</p>";
@@ -326,10 +421,13 @@ function handleRegister() {
 async function handleRegistrationSubmit(event) {
   event.preventDefault();
   try {
+    const maxQuantity = Math.max(1, Math.min(5, Number(state.event?.seats_left || 0) || 1));
+    const requestedQuantity = Number(detailRegistrationQuantity?.value || 1);
+    const quantity = Math.max(1, Math.min(maxQuantity, Number.isFinite(requestedQuantity) ? requestedQuantity : 1));
     state.event = await api(`/api/events/${state.eventId}/register`, {
       method: "POST",
       body: JSON.stringify({
-        ticket_label: detailRegistrationTicket.value,
+        quantity,
         attendee_name: detailRegistrationName.value.trim(),
         attendee_email: detailRegistrationEmail.value.trim(),
         attendee_phone: detailRegistrationPhone.value.trim(),
@@ -337,7 +435,7 @@ async function handleRegistrationSubmit(event) {
     });
     closeRegistrationModal();
     renderEvent();
-    showToast("Seat reserved successfully.");
+    showToast(quantity > 1 ? `${quantity} seats reserved successfully.` : "Seat reserved successfully.");
   } catch (error) {
     showToast(error.message, "error");
   }
@@ -382,7 +480,7 @@ async function boot() {
       closeRegistrationModal();
     }
   });
-  [detailRegistrationTicket, detailRegistrationName, detailRegistrationEmail, detailRegistrationPhone].forEach((element) => {
+  [detailRegistrationQuantity, detailRegistrationName, detailRegistrationEmail, detailRegistrationPhone].forEach((element) => {
     element?.addEventListener("input", renderRegistrationSummary);
     element?.addEventListener("change", renderRegistrationSummary);
   });
@@ -427,3 +525,18 @@ async function boot() {
 }
 
 boot();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -92,6 +92,47 @@ class EventRegistrationServiceTests(unittest.TestCase):
         self.assertFalse(cancelled_event["is_registered"])
         self.assertEqual(cancelled_event["seats_left"], 1)
 
+    def test_registration_quantity_uses_multiple_seats_and_respects_account_limit(self) -> None:
+        event = self.service.create_event(
+            self.admin["id"],
+            {
+                "title": "Quantity Event",
+                "description": "Used to verify multi-ticket reservations and account limits.",
+                "location": "Studio Q",
+                "start_at": "2026-05-07T18:00:00",
+                "capacity": 12,
+                "price": 15,
+            },
+        )
+
+        registered_event = self.service.register_for_event(self.student["id"], event["id"], {"quantity": 5})
+        self.assertTrue(registered_event["is_registered"])
+        self.assertEqual(registered_event["registered_count"], 5)
+        self.assertEqual(registered_event["seats_left"], 7)
+
+        tickets = self.service.list_user_registrations(self.student["id"])
+        quantity_ticket = next(ticket for ticket in tickets if ticket["event_id"] == event["id"])
+        self.assertEqual(quantity_ticket["quantity"], 5)
+        self.assertEqual(quantity_ticket["total_price"], 75)
+
+        with self.assertRaises(ServiceError) as context:
+            self.service.register_for_event(self.admin["id"], event["id"], {"quantity": 6})
+        self.assertEqual(context.exception.code, "TICKET_LIMIT_EXCEEDED")
+
+    def test_cancelled_registration_is_removed_after_one_day(self) -> None:
+        event_id = self.service.list_events()[0]["id"]
+        self.service.register_for_event(self.student["id"], event_id)
+        self.service.cancel_registration(self.student["id"], event_id)
+
+        self.db.registrations.update_one(
+            {"user_id": self.student["id"], "event_id": event_id},
+            {"$set": {"cancelled_at": "2000-01-01T00:00:00+00:00"}},
+        )
+
+        tickets = self.service.list_user_registrations(self.student["id"])
+        self.assertFalse(any(ticket["event_id"] == event_id for ticket in tickets))
+        self.assertIsNone(self.db.registrations.find_one({"user_id": self.student["id"], "event_id": event_id}))
+
     def test_list_user_registrations_preserves_cancelled_status(self) -> None:
         event_id = self.service.list_events()[0]["id"]
         self.service.register_for_event(self.student["id"], event_id)
@@ -139,6 +180,186 @@ class EventRegistrationServiceTests(unittest.TestCase):
         self.assertEqual(country_distribution["Vietnam"], 1)
         self.assertEqual(country_distribution["United States"], 1)
 
+    def test_wallet_top_up_increases_balance_after_confirmation(self) -> None:
+        self.db.users.update_one({"id": self.student["id"]}, {"$set": {"balance": 0}})
+
+        pending_top_up = self.service.top_up_wallet(self.student["id"], 40, "QR transfer", "Top up for new reservations")
+        self.assertIn("pending_top_up", pending_top_up)
+        wallet_before_confirm = self.service.get_wallet_overview(self.student["id"])
+        self.assertEqual(len([item for item in wallet_before_confirm["transactions"] if item["kind"] == "top_up"]), 0)
+        self.assertIsNotNone(wallet_before_confirm["pending_top_up"])
+
+        confirmed_top_up = self.service.confirm_top_up_wallet(self.student["id"])
+        self.assertEqual(confirmed_top_up["transaction"]["kind"], "top_up")
+        self.assertEqual(confirmed_top_up["user"]["balance"], 40.0)
+
+    def test_registration_is_blocked_when_balance_is_not_enough(self) -> None:
+        event = self.service.create_event(
+            self.admin["id"],
+            {
+                "title": "Premium Reservation",
+                "description": "Used to verify insufficient balance handling during reservation.",
+                "location": "Vault Hall",
+                "start_at": "2026-05-18T19:00:00",
+                "capacity": 10,
+                "price": 200,
+            },
+        )
+        self.db.users.update_one({"id": self.student["id"]}, {"$set": {"balance": 30}})
+
+        with self.assertRaises(ServiceError) as context:
+            self.service.register_for_event(self.student["id"], event["id"], {"quantity": 1})
+
+        self.assertEqual(context.exception.code, "INSUFFICIENT_FUNDS")
+        refreshed_event = next(item for item in self.service.list_events() if item["id"] == event["id"])
+        self.assertEqual(refreshed_event["registered_count"], 0)
+
+    def test_pending_top_up_blocks_repeat_generation_and_expires_without_history(self) -> None:
+        pending_top_up = self.service.top_up_wallet(self.student["id"], 18, "QR transfer", "Short lived QR")
+        self.assertEqual(pending_top_up["pending_top_up"]["status"], "pending")
+
+        with self.assertRaises(ServiceError) as context:
+            self.service.top_up_wallet(self.student["id"], 12, "QR transfer", "Second QR too early")
+        self.assertEqual(context.exception.code, "QR_TOP_UP_ACTIVE")
+
+        self.db.wallet_topup_requests.update_one(
+            {"id": pending_top_up["pending_top_up"]["request_id"]},
+            {"$set": {"expires_at": "2000-01-01T00:00:00+00:00"}},
+        )
+
+        overview = self.service.get_wallet_overview(self.student["id"])
+        self.assertIsNone(overview["pending_top_up"])
+        self.assertEqual(len([item for item in overview["transactions"] if item["kind"] == "top_up"]), 0)
+
+        with self.assertRaises(ServiceError) as expired_context:
+            self.service.confirm_top_up_wallet(self.student["id"])
+        self.assertEqual(expired_context.exception.code, "QR_TOP_UP_EXPIRED")
+
+    def test_registration_charge_and_cancel_refund_update_wallet(self) -> None:
+        event_id = self.service.list_events()[0]["id"]
+        before = self.service.authenticate("student@example.com", "Student123!")
+        registered = self.service.register_for_event(self.student["id"], event_id)
+        self.assertTrue(registered["is_registered"])
+
+        charged_user = self.service.authenticate("student@example.com", "Student123!")
+        self.assertLess(charged_user["balance"], before["balance"])
+
+        self.service.cancel_registration(self.student["id"], event_id)
+        refunded_user = self.service.authenticate("student@example.com", "Student123!")
+        self.assertAlmostEqual(refunded_user["balance"], before["balance"])
+
+    def test_user_can_update_owned_event(self) -> None:
+        created = self.service.create_owned_event(
+            self.student["id"],
+            {
+                "title": "Student Meetup",
+                "description": "A student-created community meetup for peer networking.",
+                "category": "Community",
+                "location": "Innovation Hub",
+                "start_at": "2026-05-30T18:00:00",
+                "capacity": 25,
+                "price": 10,
+            },
+        )
+
+        updated = self.service.update_owned_event(
+            self.student["id"],
+            created["id"],
+            {
+                "title": "Student Meetup Reloaded",
+                "description": "Updated copy for the student community meetup.",
+                "category": "Networking",
+                "location": "Creative Loft",
+                "venue_details": "Floor 5, Creative Loft, check-in beside the north staircase.",
+                "start_at": "2026-06-01T19:30:00",
+                "capacity": 40,
+                "price": 15,
+                "image_urls": ["/static/images/gallery-lounge.svg", "/static/images/gallery-stage.svg"],
+            },
+        )
+
+        self.assertEqual(updated["title"], "Student Meetup Reloaded")
+        self.assertEqual(updated["category"], "Networking")
+        self.assertEqual(updated["location"], "Creative Loft")
+        self.assertEqual(updated["venue_details"], "Floor 5, Creative Loft, check-in beside the north staircase.")
+        self.assertEqual(updated["capacity"], 40)
+        self.assertEqual(updated["price"], 15.0)
+        self.assertEqual(updated["image_url"], "/static/images/gallery-lounge.svg")
+        self.assertEqual(updated["approval_status"], "pending")
+        self.assertEqual(updated["review_note"], "Awaiting admin review.")
+
+    def test_user_can_create_and_delete_owned_event(self) -> None:
+        created = self.service.create_owned_event(
+            self.student["id"],
+            {
+                "title": "Student Meetup",
+                "description": "A student-created community meetup for peer networking.",
+                "category": "Community",
+                "location": "Innovation Hub",
+                "start_at": "2026-05-30T18:00:00",
+                "capacity": 25,
+                "price": 10,
+            },
+        )
+        owned_events = self.service.list_owned_events(self.student["id"])
+        self.assertTrue(any(event["id"] == created["id"] for event in owned_events))
+
+        self.service.delete_owned_event(self.student["id"], created["id"])
+        owned_events_after_delete = self.service.list_owned_events(self.student["id"])
+        self.assertFalse(any(event["id"] == created["id"] for event in owned_events_after_delete))
+
+    def test_user_event_request_stays_hidden_until_admin_approval(self) -> None:
+        created = self.service.create_owned_event(
+            self.student["id"],
+            {
+                "title": "Pending Student Demo",
+                "description": "Student request waiting for moderation.",
+                "category": "Community",
+                "location": "Prototype Hall",
+                "start_at": "2026-06-11T18:00:00",
+                "capacity": 20,
+                "price": 9,
+                "latitude": 10.77652,
+                "longitude": 106.70098,
+            },
+        )
+
+        self.assertEqual(created["approval_status"], "pending")
+        self.assertFalse(any(event["id"] == created["id"] for event in self.service.list_events()))
+
+        admin_events = self.service.list_admin_events()
+        moderated = next(event for event in admin_events if event["id"] == created["id"])
+        self.assertEqual(moderated["approval_status"], "pending")
+
+        approved = self.service.approve_event_request(created["id"])
+        self.assertEqual(approved["approval_status"], "approved")
+        self.assertEqual(approved["latitude"], 10.77652)
+        self.assertEqual(approved["longitude"], 106.70098)
+        public_event = next(event for event in self.service.list_events() if event["id"] == created["id"])
+        self.assertEqual(public_event["latitude"], 10.77652)
+        self.assertEqual(public_event["longitude"], 106.70098)
+
+    def test_admin_can_reject_user_event_request(self) -> None:
+        created = self.service.create_owned_event(
+            self.student["id"],
+            {
+                "title": "Rejected Student Demo",
+                "description": "Student request that needs revision.",
+                "category": "Community",
+                "location": "Revision Hall",
+                "start_at": "2026-06-12T18:00:00",
+                "capacity": 18,
+                "price": 7,
+            },
+        )
+
+        rejected = self.service.reject_event_request(created["id"])
+        self.assertEqual(rejected["approval_status"], "rejected")
+        self.assertEqual(rejected["review_note"], "Needs revision before publication.")
+        self.assertFalse(any(event["id"] == created["id"] for event in self.service.list_events()))
+
+        owner_visible = self.service.get_event(created["id"], user_id=self.student["id"])
+        self.assertEqual(owner_visible["approval_status"], "rejected")
 
     def test_update_user_profile_persists_avatar_and_contact(self) -> None:
         updated = self.service.update_user_profile(

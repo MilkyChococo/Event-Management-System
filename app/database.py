@@ -36,12 +36,18 @@ class Database:
         self.users.create_index([("email", ASCENDING)], unique=True)
         self.events.create_index([("id", ASCENDING)], unique=True)
         self.events.create_index([("start_at", ASCENDING)])
+        self.events.create_index([("created_by", ASCENDING), ("start_at", ASCENDING)])
         self.registrations.create_index([("user_id", ASCENDING), ("event_id", ASCENDING)], unique=True)
         self.registrations.create_index([("event_id", ASCENDING), ("created_at", ASCENDING)])
         self.sessions.create_index([("token", ASCENDING)], unique=True)
         self.sessions.create_index([("user_id", ASCENDING)])
+        self.wallet_transactions.create_index([("user_id", ASCENDING), ("created_at", ASCENDING)])
+        self.wallet_transactions.create_index([("event_id", ASCENDING), ("created_at", ASCENDING)])
+        self.wallet_topup_requests.create_index([("id", ASCENDING)], unique=True)
+        self.wallet_topup_requests.create_index([("user_id", ASCENDING), ("status", ASCENDING), ("created_at", ASCENDING)])
         self._sync_counter("users", self.users)
         self._sync_counter("events", self.events)
+        self._sync_counter("wallet_topup_requests", self.wallet_topup_requests)
 
     def _sync_counter(self, sequence_name: str, collection: Any) -> None:
         highest = collection.find_one({}, projection={"_id": 0, "id": 1}, sort=[("id", -1)])
@@ -89,6 +95,14 @@ class Database:
     @property
     def sessions(self) -> Any:
         return self.connect()["sessions"]
+
+    @property
+    def wallet_transactions(self) -> Any:
+        return self.connect()["wallet_transactions"]
+
+    @property
+    def wallet_topup_requests(self) -> Any:
+        return self.connect()["wallet_topup_requests"]
 
     @property
     def counters(self) -> Any:

@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Your Activity | EventHub Verify</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260328-location-coordinates" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="topbar-brand-row">
+          <a class="brand-mark admin-topbar-link" href="/dashboard" data-testid="activity-dashboard-link">EventHub Verify</a>
+          <div class="admin-topbar-nav" data-testid="topbar-about-nav">
+            <span class="admin-topbar-separator" aria-hidden="true">|</span>
+            <a class="admin-nav-button" href="/aboutus" data-testid="aboutus-link">About Us</a>
+            <span class="admin-topbar-separator" aria-hidden="true">|</span>
+            <a class="admin-nav-button is-active" href="/activity" aria-current="page" data-testid="activity-link">Your activity</a>
+          </div>
+          <div id="activity-admin-topbar-nav" class="admin-topbar-nav hidden" data-testid="admin-topbar-nav">
+            <span class="admin-topbar-separator" aria-hidden="true">|</span>
+            <a class="admin-nav-button" href="/admin/manager" data-testid="admin-manager-link">Manager</a>
+            <span class="admin-topbar-separator" aria-hidden="true">|</span>
+            <a class="admin-nav-button" href="/admin/analytics" data-testid="admin-analytics-link">Chart Analysis</a>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <span class="welcome-text" id="activity-welcome-text">Welcome</span>
+          <span class="topbar-role-chip" id="activity-role-chip" data-testid="user-role-chip">user</span>
+          <div class="account-anchor">
+            <button class="account-trigger" data-testid="account-trigger" type="button" aria-label="Account">
+              <span data-testid="account-avatar">U</span>
+            </button>
+            <div class="account-menu hidden" data-testid="account-menu">
+              <p class="menu-name" data-testid="account-menu-name">User</p>
+              <p class="menu-email" data-testid="account-menu-email">email@example.com</p>
+              <a class="menu-link" data-testid="account-detail-link" href="/account">Account detail</a>
+              <a class="menu-link" data-testid="account-billing-link" href="/account/billing">Billing</a>
+              <a class="menu-link" data-testid="account-security-link" href="/account/security">Security &amp; Privacy</a>
+              <button class="menu-link danger-link" data-testid="account-logout" type="button">Sign out</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="page-shell activity-page-shell">
+        <section class="profile-header-card activity-header-card">
+          <div class="profile-header-main">
+            <div class="profile-avatar-stack">
+              <div class="profile-avatar-large" data-testid="activity-avatar">U</div>
+            </div>
+            <div class="profile-header-copy">
+              <p class="eyebrow">Your activity</p>
+              <h1 id="activity-title">Loading your activity...</h1>
+              <p id="activity-hero-copy" class="hero-copy">Track the events you joined and manage the ones you host.</p>
+            </div>
+          </div>
+          <div class="activity-header-metrics">
+            <article class="profile-field">
+              <span>Joined events</span>
+              <strong id="activity-joined-count">0</strong>
+            </article>
+            <article class="profile-field">
+              <span>Active reservations</span>
+              <strong id="activity-active-count">0</strong>
+            </article>
+            <article class="profile-field">
+              <span>My events</span>
+              <strong id="activity-owned-count">0</strong>
+            </article>
+          </div>
+        </section>
+
+        <section class="page-section">
+          <div class="billing-shell billing-accordion" aria-label="Your activity panels">
+            <section class="billing-accordion-item" data-activity-item="registrations">
+              <button class="billing-sidebar-item" data-activity-toggle="registrations" type="button" aria-expanded="true">
+                <div>
+                  <h3>Event registration archive</h3>
+                </div>
+                <span class="billing-sidebar-icon" data-activity-icon>^</span>
+              </button>
+              <section class="admin-card billing-panel is-active" data-activity-panel="registrations">
+                <div class="section-heading compact-heading">
+                  <div>
+                    <p class="eyebrow">Event registration</p>
+                    <h3>Reservations and joined events</h3>
+                  </div>
+                </div>
+                <div id="activity-joined-list" class="event-match-list activity-registration-list">Loading your event activity...</div>
+              </section>
+            </section>
+
+            <section class="billing-accordion-item" data-activity-item="studio">
+              <button class="billing-sidebar-item" data-activity-toggle="studio" type="button" aria-expanded="false">
+                <div>
+                  <h3>Event request studio</h3>
+                </div>
+                <span class="billing-sidebar-icon" data-activity-icon>v</span>
+              </button>
+              <section class="admin-card billing-panel hidden" data-activity-panel="studio">
+                <div class="section-heading compact-heading">
+                  <div>
+                    <p class="eyebrow">Event request studio</p>
+                    <h3>Send, update, and manage your event requests</h3>
+                  </div>
+                </div>
+
+                <div class="owned-events-layout activity-owned-layout">
+                  <section class="admin-card owned-event-form-card activity-owned-form-card">
+                    <div class="section-heading compact-heading">
+                      <div>
+                        <p class="eyebrow" id="activity-form-kicker">Request</p>
+                        <h3 id="activity-form-title">Send a new event request</h3>
+                      </div>
+                    </div>
+                    <form id="activity-owned-event-form" class="form-grid admin-modal-form two-columns">
+                      <input id="activity-owned-event-id" type="hidden" />
+                      <label>
+                        Event title
+                        <input id="activity-owned-event-title" type="text" required />
+                      </label>
+                      <label>
+                        Category
+                        <input id="activity-owned-event-category" type="text" value="Community" required />
+                      </label>
+                      <label class="full-width">
+                        Description
+                        <textarea id="activity-owned-event-description" rows="5" placeholder="Write one clear description shown in the event detail page." required></textarea>
+                      </label>
+                      <label class="full-width">
+                        Venue details
+                        <textarea id="activity-owned-event-venue-details" rows="3" placeholder="Address, floor, parking, entrance, check-in notes"></textarea>
+                      </label>
+                      <label>
+                        Signature location
+                        <div class="location-input-row">
+                          <input id="activity-owned-event-location" type="text" required />
+                          <input id="activity-owned-event-latitude" type="hidden" />
+                          <input id="activity-owned-event-longitude" type="hidden" />
+                          <button class="secondary-button location-picker-trigger" id="activity-location-picker" type="button" aria-label="Open location picker">
+                            <svg class="location-picker-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                              <path d="M12 21s6-5.33 6-11a6 6 0 1 0-12 0c0 5.67 6 11 6 11Zm0-8.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5Z" fill="currentColor"/>
+                            </svg>
+                          </button>
+                        </div>
+                      </label>
+                      <label>
+                        Start time
+                        <input id="activity-owned-event-start-at" type="datetime-local" required />
+                      </label>
+                      <label>
+                        Capacity
+                        <input id="activity-owned-event-capacity" type="number" min="1" required />
+                      </label>
+                      <label>
+                        Ticket price (USD)
+                        <input id="activity-owned-event-price" type="number" min="0" step="1" required />
+                      </label>
+                      <label class="full-width">
+                        Add gallery image (URL or static path)
+                        <div class="image-editor-input-row">
+                          <input id="activity-image-url" type="text" placeholder="/static/images/default-event.svg" />
+                          <button class="secondary-button" id="activity-image-add" type="button">Add image</button>
+                        </div>
+                      </label>
+                      <div class="full-width image-editor-panel">
+                        <input id="activity-image-files" type="file" accept="image/*" multiple hidden />
+                        <div id="activity-image-dropzone" class="admin-image-dropzone" tabindex="0" role="button" aria-label="Drop gallery images or browse files">
+                          <div class="admin-image-dropzone-copy">
+                            <strong>Drop multiple images here</strong>
+                            <p class="subtle">Images are saved with the event. The first image becomes the cover used on cards and detail pages.</p>
+                          </div>
+                          <button class="secondary-button" id="activity-image-browse" type="button">Browse files</button>
+                        </div>
+                        <div class="admin-image-preview-shell">
+                          <img id="activity-image-preview" class="admin-image-preview" src="/static/images/default-event.svg" alt="Owned event cover preview" />
+                        </div>
+                        <div class="image-editor-meta">
+                          <p id="activity-image-status" class="subtle">No custom images yet. The event will use the default artwork until you add photos.</p>
+                          <button class="secondary-button" id="activity-image-clear" type="button">Clear gallery</button>
+                        </div>
+                        <div id="activity-image-gallery" class="admin-image-gallery">No custom images added yet.</div>
+                      </div>
+                      <div class="button-row full-width activity-form-actions">
+                        <button class="primary-button" id="activity-owned-event-submit" type="submit">Send request</button>
+                        <button class="secondary-button hidden" id="activity-owned-event-cancel" type="button">Cancel edit</button>
+                      </div>
+                    </form>
+                  </section>
+
+                  <section class="admin-card owned-event-list-card">
+                    <div class="section-heading compact-heading">
+                      <div>
+                        <p class="eyebrow">Inventory</p>
+                        <h3>Your requests</h3>
+                      </div>
+                    </div>
+                    <div id="activity-owned-event-list" class="owned-event-list">Loading your events...</div>
+                  </section>
+                </div>
+              </section>
+            </section>
+          </div>
+        </section>
+      </main>
+      <div class="global-footer-host" data-global-footer-host></div>
+    </div>
+
+    <script type="module" src="/static/activity.js?v=20260328-location-coordinates"></script>
+  </body>
+</html>

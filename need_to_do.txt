@@ -1,0 +1,19 @@
+-Login/Register
+    Generate Otp and Send Email for Forgot Password
+-System
+    Edit About Us
+    Each event needs the owner creator
+
+- User:
+    Add/Delete Own Events
+    Balance, Credit, Nạp tiền, QR Generate
+    When user reserves events, verify the actions, minus the Credit
+    If Balance is not enough, warning, accept debit and warning in evert 1st month
+    Cá nhân và Bảo mật Page khi ấn vào logo account để mở detail
+-AI Assist:
+    Small Function: Chatting and Supporting User
+- Logo contact
+- List of Favorite Events
+
+
+

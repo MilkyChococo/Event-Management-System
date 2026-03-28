@@ -3,6 +3,7 @@ import {
   escapeHtml,
   formatCurrency,
   formatDateTime,
+  fromDatetimeLocal,
   getCurrentUser,
   redirectTo,
   renderUserAvatar,
@@ -64,6 +65,19 @@ const profileFormStreetAddress = document.querySelector("#profile-form-street-ad
 const profileFormPhoneFlag = document.querySelector("#profile-form-phone-flag");
 const profileFormPhoneCountry = document.querySelector("#profile-form-phone-country");
 const profileFormPhoneLocalNumber = document.querySelector("#profile-form-phone-local-number");
+const walletBalance = document.querySelector("#wallet-balance");
+const walletTopUpForm = document.querySelector("#wallet-topup-form");
+const walletTopUpAmount = document.querySelector("#wallet-topup-amount");
+const walletTopUpProvider = document.querySelector("#wallet-topup-provider");
+const walletTopUpNote = document.querySelector("#wallet-topup-note");
+const walletQrShell = document.querySelector("#wallet-qr-shell");
+const walletQrImage = document.querySelector("#wallet-qr-image");
+const walletQrPayload = document.querySelector("#wallet-qr-payload");
+const walletTransactionList = document.querySelector("#wallet-transaction-list");
+const walletExportButton = document.querySelector("#wallet-export-button");
+const ownedEventForm = document.querySelector("#owned-event-form");
+const ownedEventList = document.querySelector("#owned-event-list");
+const securityForm = document.querySelector("#security-form");
 
 const DEFAULT_EVENT_IMAGE = "/static/images/default-event.svg";
 const ACTIVE_TICKET_STATUSES = new Set(["confirmed", "checked_in"]);
@@ -72,6 +86,9 @@ const state = {
   user: null,
   draftAvatarUrl: "",
   tickets: [],
+  walletTransactions: [],
+  latestTopUp: null,
+  ownedEvents: [],
 };
 
 function fillSelect(select, values, preferredValue = "", { allowBlank = false, blankLabel = "Not specified" } = {}) {
@@ -299,6 +316,193 @@ function applyAvatarUrl() {
   profileAvatarUrl.value = "";
 }
 
+function renderWallet() {
+  if (!state.user) {
+    return;
+  }
+
+  if (walletBalance) {
+    walletBalance.textContent = formatCurrency(state.user.balance || 0);
+  }
+
+  if (!walletTransactionList) {
+    return;
+  }
+
+  if (!state.walletTransactions.length) {
+    walletTransactionList.innerHTML = '<p class="subtle">No wallet activity yet. Top up or reserve an event to see movement here.</p>';
+  } else {
+    walletTransactionList.innerHTML = state.walletTransactions
+      .map(
+        (transaction) => `
+          <article class="wallet-transaction-item">
+            <div>
+              <strong>${escapeHtml(transaction.kind.replace(/_/g, " "))}</strong>
+              <p class="subtle">${escapeHtml(transaction.note || "Wallet activity")}</p>
+            </div>
+            <div class="wallet-transaction-meta">
+              <span>${escapeHtml(formatDateTime(transaction.created_at))}</span>
+              <strong>${escapeHtml(formatCurrency(transaction.amount || 0))}</strong>
+            </div>
+          </article>
+        `
+      )
+      .join("");
+  }
+
+  if (state.latestTopUp && walletQrShell && walletQrImage && walletQrPayload) {
+    walletQrShell.classList.remove("hidden");
+    walletQrImage.src = state.latestTopUp.qr_image_url;
+    walletQrPayload.textContent = state.latestTopUp.qr_payload;
+  }
+}
+
+function renderOwnedEvents() {
+  if (!ownedEventList) {
+    return;
+  }
+
+  if (!state.ownedEvents.length) {
+    ownedEventList.innerHTML = '<p class="subtle">You have not created any personal events yet.</p>';
+    return;
+  }
+
+  ownedEventList.innerHTML = state.ownedEvents
+    .map(
+      (event) => `
+        <article class="owned-event-item" data-event-id="${event.id}">
+          <div>
+            <strong>${escapeHtml(event.title)}</strong>
+            <p class="subtle">${escapeHtml(formatDateTime(event.start_at))} - ${escapeHtml(event.location)}</p>
+            <p class="subtle">${escapeHtml(formatCurrency(event.price))} / ticket - ${escapeHtml(String(event.capacity))} capacity - ${escapeHtml(String(event.registered_count))} reserved</p>
+          </div>
+          <div class="owned-event-actions">
+            <a class="secondary-button" href="/events/${event.id}/view">View detail</a>
+            <button class="secondary-button danger-button" data-action="delete-owned-event" data-id="${event.id}" type="button">Delete</button>
+          </div>
+        </article>
+      `
+    )
+    .join("");
+}
+
+async function loadWallet() {
+  const wallet = await api("/api/me/wallet");
+  state.user = wallet.user;
+  state.walletTransactions = wallet.transactions || [];
+  populateProfile(state.user);
+  renderWallet();
+}
+
+async function loadOwnedEvents() {
+  state.ownedEvents = await api("/api/me/owned-events");
+  renderOwnedEvents();
+}
+
+async function handleWalletTopUpSubmit(event) {
+  event.preventDefault();
+  const response = await api("/api/me/wallet/top-up", {
+    method: "POST",
+    body: JSON.stringify({
+      amount: Number(walletTopUpAmount.value),
+      provider: walletTopUpProvider.value.trim(),
+      note: walletTopUpNote.value.trim(),
+    }),
+  });
+  state.user = response.user;
+  state.latestTopUp = response;
+  state.walletTransactions = [response.transaction, ...state.walletTransactions].slice(0, 20);
+  populateProfile(state.user);
+  renderWallet();
+  walletTopUpForm?.reset();
+  if (walletTopUpProvider) {
+    walletTopUpProvider.value = "QR transfer";
+  }
+  showToast(response.message || "Wallet topped up successfully.");
+}
+
+async function handleOwnedEventSubmit(event) {
+  event.preventDefault();
+  await api("/api/me/owned-events", {
+    method: "POST",
+    body: JSON.stringify({
+      title: document.querySelector("#owned-event-title").value.trim(),
+      description: document.querySelector("#owned-event-description").value.trim(),
+      category: document.querySelector("#owned-event-category").value.trim(),
+      location: document.querySelector("#owned-event-location").value.trim(),
+      start_at: fromDatetimeLocal(document.querySelector("#owned-event-start-at").value),
+      capacity: Number(document.querySelector("#owned-event-capacity").value),
+      price: Number(document.querySelector("#owned-event-price").value),
+    }),
+  });
+  ownedEventForm?.reset();
+  document.querySelector("#owned-event-category").value = "Community";
+  await loadOwnedEvents();
+  showToast("Your event was created successfully.");
+}
+
+async function handleOwnedEventAction(target) {
+  if (target.dataset.action !== "delete-owned-event") {
+    return;
+  }
+  const eventId = Number(target.dataset.id);
+  if (!eventId) {
+    return;
+  }
+  await api(`/api/me/owned-events/${eventId}`, { method: "DELETE" });
+  state.ownedEvents = state.ownedEvents.filter((event) => event.id !== eventId);
+  renderOwnedEvents();
+  showToast("Owned event deleted.");
+}
+
+async function handleSecuritySubmit(event) {
+  event.preventDefault();
+  const currentPasswordField = document.querySelector("#security-current-password");
+  const newPasswordField = document.querySelector("#security-new-password");
+  const updatedUser = await api("/api/me/change-password", {
+    method: "POST",
+    body: JSON.stringify({
+      current_password: currentPasswordField.value,
+      new_password: newPasswordField.value,
+    }),
+  });
+  state.user = updatedUser;
+  populateProfile(updatedUser);
+  securityForm?.reset();
+  showToast("Password updated successfully.");
+}
+
+function exportBillingHistory() {
+  const rows = [
+    ["kind", "amount", "balance_delta", "balance_after", "note", "created_at"],
+    ...state.walletTransactions.map((transaction) => [
+      transaction.kind,
+      transaction.amount,
+      transaction.balance_delta,
+      transaction.balance_after,
+      transaction.note,
+      transaction.created_at,
+    ]),
+  ];
+  const csv = rows.map((row) => row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",")).join("
+");
+  createDownload("billing-history.csv", csv, "text/csv;charset=utf-8");
+  showToast("Billing export downloaded.");
+}
+
+function scrollToSectionHash() {
+  if (!window.location.hash) {
+    return;
+  }
+  const target = document.querySelector(window.location.hash);
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+  window.setTimeout(() => {
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 120);
+}
+
 function createDownload(filename, content, mimeType) {
   const blob = new Blob([content], { type: mimeType });
   const link = document.createElement("a");
@@ -339,7 +543,9 @@ function downloadTicketPass(ticket) {
     `Status: ${ticketStatusLabel(ticket.status)}`,
     `Ticket: ${ticket.ticket_label}`,
     `Ticket code: ${ticket.ticket_code}`,
+    `Quantity: ${ticket.quantity || 1}`,
     `Price: ${formatCurrency(ticket.ticket_price)}`,
+    `Total: ${formatCurrency(ticket.total_price || ticket.ticket_price)}`,
     `Attendee: ${ticket.attendee_name}`,
     `Email: ${ticket.attendee_email}`,
     `Phone: ${ticket.attendee_phone}`,
@@ -371,7 +577,8 @@ function downloadCalendarInvite(ticket) {
     `DESCRIPTION:Ticket ${ticket.ticket_code} for ${ticket.ticket_label}`,
     "END:VEVENT",
     "END:VCALENDAR",
-  ].join("
+  ].join("
+
 ");
   createDownload(`${ticket.ticket_code}.ics`, content, "text/calendar;charset=utf-8");
 }
@@ -427,7 +634,11 @@ function renderTickets() {
               </article>
               <article>
                 <span>Price</span>
-                <strong>${escapeHtml(formatCurrency(ticket.ticket_price))}</strong>
+                <strong>${escapeHtml(formatCurrency(ticket.ticket_price))} x ${escapeHtml(String(ticket.quantity || 1))}</strong>
+              </article>
+              <article>
+                <span>Total</span>
+                <strong>${escapeHtml(formatCurrency(ticket.total_price || ticket.ticket_price))}</strong>
               </article>
             </div>
             <div class="ticket-qr-row">
@@ -518,7 +729,7 @@ async function boot() {
   state.user = user;
   populateProfile(user);
   setupGlobalFooter(user);
-  await loadTickets();
+  await Promise.all([loadTickets(), loadOwnedEvents()]);
 
   profileEditTrigger?.addEventListener("click", openProfileModal);
   profileModalClose?.addEventListener("click", closeProfileModal);
@@ -572,6 +783,28 @@ async function boot() {
     }
   });
   profileForm?.addEventListener("submit", handleProfileSubmit);
+  ownedEventForm?.addEventListener("submit", async (event) => {
+    try {
+      await handleOwnedEventSubmit(event);
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
+  ownedEventList?.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const actionTarget = target.closest("[data-action]");
+    if (!(actionTarget instanceof HTMLElement)) {
+      return;
+    }
+    try {
+      await handleOwnedEventAction(actionTarget);
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
   ticketList?.addEventListener("click", async (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) {

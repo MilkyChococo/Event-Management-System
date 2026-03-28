@@ -1,0 +1,97 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Security | EventHub Verify</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260324-account-split-pages" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="secondary-link" href="/dashboard">&#8592; Back to dashboard</a>
+        <div class="topbar-actions">
+          <div class="account-anchor">
+            <button class="account-trigger" data-testid="account-trigger" type="button" aria-label="Account">
+              <span data-testid="account-avatar">U</span>
+            </button>
+            <div class="account-menu hidden" data-testid="account-menu">
+              <p class="menu-name" data-testid="account-menu-name">User</p>
+              <p class="menu-email" data-testid="account-menu-email">email@example.com</p>
+              <a class="menu-link" data-testid="account-detail-link" href="/account">Account detail</a>
+              <a class="menu-link" data-testid="account-billing-link" href="/account/billing">Billing</a>
+              <a class="menu-link" data-testid="account-security-link" href="/account/security">Security &amp; Privacy</a>
+              <button class="menu-link danger-link" data-testid="account-logout" type="button">Sign out</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="page-shell account-page">
+        <section class="profile-header-card">
+          <div class="profile-header-main">
+            <div class="profile-avatar-stack">
+              <div class="profile-avatar-large" data-testid="profile-avatar">U</div>
+            </div>
+            <div class="profile-header-copy">
+              <p class="eyebrow">Security &amp; Privacy</p>
+              <h1>Security and privacy</h1>
+              <p id="security-hero-copy" class="hero-copy">Loading your account security overview...</p>
+              <span id="profile-role" class="profile-role-chip">user</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="page-section" id="account-security-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Security &amp; Privacy</p>
+              <h2>Password reset, privacy notes, and account terms</h2>
+            </div>
+          </div>
+          <div class="wallet-panel-grid security-panel-grid">
+            <section class="admin-card security-card">
+              <p class="subtle">Reset your password here when you want to protect the account from unauthorized access.</p>
+              <form id="security-form" class="form-grid">
+                <label>
+                  Current password
+                  <input id="security-current-password" type="password" minlength="8" required />
+                </label>
+                <label>
+                  New password
+                  <input id="security-new-password" type="password" minlength="8" required />
+                </label>
+                <button class="primary-button" id="security-submit" type="submit">Reset password</button>
+              </form>
+            </section>
+            <section class="admin-card privacy-card">
+              <div class="section-heading compact-heading">
+                <div>
+                  <p class="eyebrow">Terms &amp; Privacy</p>
+                  <h3>Account terms</h3>
+                </div>
+              </div>
+              <div class="privacy-note-list">
+                <article class="profile-field">
+                  <span>Privacy</span>
+                  <strong>Your profile details are used only for ticketing, billing, and organizer verification inside this coursework system.</strong>
+                </article>
+                <article class="profile-field">
+                  <span>Terms</span>
+                  <strong>Event reservations deduct only your balance. If the balance is not enough, top up first and try again.</strong>
+                </article>
+                <article class="profile-field">
+                  <span>Security</span>
+                  <strong>Use a strong password and update it immediately if you suspect account access from someone else.</strong>
+                </article>
+              </div>
+            </section>
+          </div>
+        </section>
+      </main>
+      <div class="global-footer-host" data-global-footer-host></div>
+    </div>
+
+    <script type="module" src="/static/security.js?v=20260324-account-split-pages"></script>
+  </body>
+</html>

@@ -126,6 +126,7 @@ class UserOutput(BaseModel):
     phone_country_flag: str
     phone_local_number: str
     avatar_url: str
+    balance: float
 
 
 class UserUpdateInput(BaseModel):
@@ -144,6 +145,11 @@ class UserUpdateInput(BaseModel):
 
     _birth_date = field_validator("date_of_birth")(_validate_date)
     _avatar_url = field_validator("avatar_url", mode="before")(_normalize_profile_image)
+
+
+class PasswordChangeInput(BaseModel):
+    current_password: str = Field(min_length=8, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 class ForgotPasswordInput(BaseModel):
@@ -179,6 +185,7 @@ class TicketTypeOutput(BaseModel):
 
 class RegistrationInput(BaseModel):
     ticket_label: str = Field(default="", max_length=80)
+    quantity: int = Field(default=1, ge=1, le=5)
     attendee_name: str = Field(default="", max_length=100)
     attendee_email: str = Field(default="", max_length=255)
     attendee_phone: str = Field(default="", max_length=40)
@@ -192,7 +199,6 @@ class RegistrationInput(BaseModel):
     @classmethod
     def _clean_attendee_email(cls, value: object) -> str:
         return _validate_optional_email(str(value or ""))
-
 
 class EventInput(BaseModel):
     title: str = Field(min_length=3, max_length=120)
@@ -211,6 +217,8 @@ class EventInput(BaseModel):
     image_url: str | None = None
     image_urls: list[str] = Field(default_factory=list)
     map_url: str = Field(default="", max_length=1000)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
     refund_policy: str = Field(default="", max_length=400)
     check_in_policy: str = Field(default="", max_length=400)
     contact_email: str = Field(default="", max_length=255)
@@ -276,6 +284,47 @@ class EventInput(BaseModel):
         return self
 
 
+class OwnedEventCreateInput(BaseModel):
+    title: str = Field(min_length=3, max_length=120)
+    description: str = Field(min_length=10, max_length=1000)
+    category: str = Field(default="Community", min_length=2, max_length=80)
+    location: str = Field(min_length=3, max_length=120)
+    venue_details: str = Field(default="", max_length=400)
+    start_at: str = Field(min_length=10, max_length=40)
+    capacity: int = Field(ge=1, le=5000)
+    price: float = Field(ge=0, le=1_000_000_000)
+    image_url: str | None = None
+    image_urls: list[str] = Field(default_factory=list)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+
+    @field_validator("title", "description", "category", "location", "venue_details", "start_at", mode="before")
+    @classmethod
+    def _clean_owned_event_text(cls, value: object) -> str:
+        return str(value or "").strip()
+
+    @field_validator("image_url", mode="before")
+    @classmethod
+    def _normalize_owned_primary_image(cls, value: object) -> str | None:
+        return _normalize_image_url(str(value) if value is not None else None)
+
+    @field_validator("image_urls", mode="before")
+    @classmethod
+    def _normalize_owned_gallery_images(cls, value: object) -> list[str]:
+        return _normalize_image_url_list(value)
+
+    @model_validator(mode="after")
+    def _coerce_owned_gallery(self) -> "OwnedEventCreateInput":
+        gallery = list(self.image_urls)
+        if self.image_url and self.image_url not in gallery:
+            gallery.insert(0, self.image_url)
+        if not gallery:
+            gallery = [DEFAULT_EVENT_IMAGE]
+        self.image_urls = gallery
+        self.image_url = gallery[0]
+        return self
+
+
 class EventOutput(BaseModel):
     id: int
     title: str
@@ -294,6 +343,8 @@ class EventOutput(BaseModel):
     image_url: str
     image_urls: list[str]
     map_url: str
+    latitude: float | None
+    longitude: float | None
     refund_policy: str
     check_in_policy: str
     contact_email: str
@@ -302,6 +353,8 @@ class EventOutput(BaseModel):
     opening_highlights: str
     mid_event_highlights: str
     closing_highlights: str
+    approval_status: str
+    review_note: str
     registered_count: int
     seats_left: int
     is_registered: bool
@@ -313,8 +366,8 @@ class AttendeeOutput(BaseModel):
     email: str
     registered_at: str
     ticket_label: str
+    quantity: int
     status: str
-
 
 class UserTicketOutput(BaseModel):
     event_id: int
@@ -326,7 +379,9 @@ class UserTicketOutput(BaseModel):
     image_url: str
     ticket_code: str
     ticket_label: str
+    quantity: int
     ticket_price: float
+    total_price: float
     attendee_name: str
     attendee_email: str
     attendee_phone: str
@@ -334,6 +389,59 @@ class UserTicketOutput(BaseModel):
     registered_at: str
     cancelled_at: str | None = None
     qr_payload: str
+
+class WalletTopUpInput(BaseModel):
+    amount: float = Field(gt=0, le=1_000_000_000)
+    provider: str = Field(default="QR transfer", min_length=2, max_length=120)
+    note: str = Field(default="", max_length=240)
+
+    @field_validator("provider", "note", mode="before")
+    @classmethod
+    def _clean_wallet_text(cls, value: object) -> str:
+        return str(value or "").strip()
+
+
+class WalletTransactionOutput(BaseModel):
+    kind: str
+    amount: float
+    balance_delta: float
+    balance_after: float
+    note: str
+    event_id: int | None = None
+    ticket_label: str = ""
+    qr_payload: str = ""
+    qr_image_url: str = ""
+    created_at: str
+
+
+class WalletPendingTopUpOutput(BaseModel):
+    request_id: int
+    amount: float
+    provider: str
+    note: str
+    status: str
+    qr_payload: str
+    qr_image_url: str
+    created_at: str
+    expires_at: str
+    seconds_remaining: int
+
+
+class WalletOverviewOutput(BaseModel):
+    user: UserOutput
+    transactions: list[WalletTransactionOutput]
+    pending_top_up: WalletPendingTopUpOutput | None = None
+
+
+class WalletTopUpOutput(BaseModel):
+    pending_top_up: WalletPendingTopUpOutput
+    message: str
+
+
+class WalletTopUpConfirmOutput(BaseModel):
+    user: UserOutput
+    transaction: WalletTransactionOutput
+    message: str
 
 
 class DistributionItemOutput(BaseModel):
@@ -377,3 +485,4 @@ class AdminAnalyticsOutput(BaseModel):
 
 class MessageOutput(BaseModel):
     message: str
+

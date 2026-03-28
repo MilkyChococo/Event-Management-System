@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Event Detail | EventHub Verify</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260317-user-flow-upgrade" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260328-location-coordinates" />
   </head>
   <body>
     <div class="app-shell">
@@ -20,7 +20,9 @@
             <div class="account-menu hidden" data-testid="account-menu">
               <p class="menu-name" data-testid="account-menu-name">User</p>
               <p class="menu-email" data-testid="account-menu-email">email@example.com</p>
-              <a class="menu-link" data-testid="account-profile-link" href="/account">Account details</a>
+              <a class="menu-link" data-testid="account-detail-link" href="/account">Account detail</a>
+              <a class="menu-link" data-testid="account-billing-link" href="/account/billing">Billing</a>
+              <a class="menu-link" data-testid="account-security-link" href="/account/security">Security &amp; Privacy</a>
               <button class="menu-link danger-link" data-testid="account-logout" type="button">Sign out</button>
             </div>
           </div>
@@ -59,54 +61,47 @@
 
             <div class="stat-grid detail-stats">
               <div class="stat-card">
-                <span>Ticket price</span>
+                <span>Ticket price:</span>
                 <strong id="detail-price" data-testid="event-price"></strong>
               </div>
               <div class="stat-card">
-                <span>Registered attendees</span>
+                <span>Registered attendees:</span>
                 <strong id="detail-attendees" data-testid="event-attendees"></strong>
               </div>
               <div class="stat-card">
-                <span>Seats left</span>
+                <span>Seats left:</span>
                 <strong id="detail-seats" data-testid="event-seats"></strong>
               </div>
               <div class="stat-card">
-                <span>Start time</span>
+                <span>Start time:</span>
                 <strong id="detail-start-at"></strong>
               </div>
             </div>
 
             <div class="detail-feature-grid">
               <section class="venue-panel">
-                <span class="section-tag">Venue note</span>
-                <strong id="detail-location"></strong>
-                <p id="detail-venue-details" class="hero-copy"></p>
+                <span class="section-tag">Address</span>
+                <div id="detail-map-preview" class="detail-map-preview">
+                  <iframe
+                    id="detail-map-frame"
+                    class="detail-map-frame hidden"
+                    loading="lazy"
+                    referrerpolicy="no-referrer-when-downgrade"
+                    allowfullscreen
+                    title="Event venue map"
+                  ></iframe>
+                  <p id="detail-map-fallback" class="detail-map-fallback">Map preview will appear here once the venue address is available.</p>
+                </div>
                 <a id="detail-map-link" class="detail-link" href="#" target="_blank" rel="noreferrer">Open map</a>
               </section>
 
-              <section class="program-card">
-                <span class="section-tag">Organizer</span>
-                <strong id="detail-organizer-name"></strong>
-                <p id="detail-organizer-details"></p>
+              <section class="program-card detail-description-block">
+                <span class="section-tag">Description</span>
+                <p id="detail-description-block" class="detail-description-copy"></p>
               </section>
             </div>
 
-            <section class="program-arc">
-              <div class="program-card">
-                <span class="section-tag">Opening scene</span>
-                <p id="detail-opening"></p>
-              </div>
-              <div class="program-card program-card-mid">
-                <span class="section-tag">In the room</span>
-                <p id="detail-middle"></p>
-              </div>
-              <div class="program-card">
-                <span class="section-tag">Closing mood</span>
-                <p id="detail-closing"></p>
-              </div>
-            </section>
-
-            <div class="detail-split-grid">
+            <div class="detail-split-grid"> 
               <section class="program-card">
                 <span class="section-tag">Speaker lineup</span>
                 <div id="detail-speakers" class="detail-list"></div>
@@ -179,8 +174,8 @@
         <div class="detail-registration-shell">
           <form id="detail-registration-form" class="form-grid detail-registration-form">
             <label>
-              Ticket type
-              <select id="detail-registration-ticket" required></select>
+              Ticket quantity
+              <input id="detail-registration-quantity" type="number" min="1" max="5" value="1" required />
             </label>
             <label>
               Attendee name
@@ -194,6 +189,10 @@
               Contact phone
               <input id="detail-registration-phone" type="tel" required />
             </label>
+            <div class="detail-registration-priority-row">
+              <article id="detail-registration-quantity-focus" class="detail-registration-focus-card"></article>
+              <article id="detail-registration-price-focus" class="detail-registration-focus-card is-price"></article>
+            </div>
             <div class="button-row detail-registration-actions">
               <button class="primary-button" id="detail-registration-submit" type="submit">Confirm reservation</button>
               <button class="secondary-button" id="detail-registration-cancel" type="button">Cancel</button>
@@ -208,6 +207,21 @@
       </div>
     </div>
 
-    <script type="module" src="/static/event-detail.js?v=20260317-user-flow-upgrade"></script>
+    <script type="module" src="/static/event-detail.js?v=20260328-location-coordinates"></script>
   </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -196,6 +196,37 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.json()["title"], "Verification Showcase")
 
+    def test_event_registration_fails_when_balance_is_not_enough(self) -> None:
+        self.login("admin@example.com", "Admin123!")
+        create_response = self.client.post(
+            "/api/admin/events",
+            json={
+                "title": "Premium Reservation",
+                "description": "Expensive event used to verify insufficient balance responses.",
+                "location": "Vault Hall",
+                "start_at": "2026-05-12T20:00:00",
+                "capacity": 8,
+                "price": 250,
+            },
+        )
+        self.assertEqual(create_response.status_code, 201)
+        event_id = create_response.json()["id"]
+
+        self.client.post("/api/auth/logout")
+        self.login("student@example.com", "Student123!")
+
+        register_response = self.client.post(
+            f"/api/events/{event_id}/register",
+            json={"quantity": 1},
+        )
+        self.assertEqual(register_response.status_code, 402)
+        self.assertEqual(register_response.json()["error"]["code"], "INSUFFICIENT_FUNDS")
+
+        events_response = self.client.get("/api/events")
+        self.assertEqual(events_response.status_code, 200)
+        event = next(item for item in events_response.json() if item["id"] == event_id)
+        self.assertEqual(event["registered_count"], 0)
+
     def test_admin_can_update_and_delete_event(self) -> None:
         self.login("admin@example.com", "Admin123!")
 
@@ -337,6 +368,59 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(cancel_response.status_code, 200)
         self.assertFalse(cancel_response.json()["is_registered"])
 
+    def test_user_can_reserve_up_to_five_tickets_in_one_booking(self) -> None:
+        self.login("admin@example.com", "Admin123!")
+        create_response = self.client.post(
+            "/api/admin/events",
+            json={
+                "title": "Quantity API Event",
+                "description": "API verifies quantity-based reservations on a single booking.",
+                "location": "Hall Q",
+                "start_at": "2026-05-18T19:00:00",
+                "capacity": 10,
+                "price": 12,
+            },
+        )
+        self.assertEqual(create_response.status_code, 201)
+        event_id = create_response.json()["id"]
+
+        self.client.post("/api/auth/logout")
+        self.login("student@example.com", "Student123!")
+
+        register_response = self.client.post(
+            f"/api/events/{event_id}/register",
+            json={
+                "quantity": 5,
+                "attendee_name": "Student Demo",
+                "attendee_email": "student@example.com",
+                "attendee_phone": "+84 912345678",
+            },
+        )
+        self.assertEqual(register_response.status_code, 200)
+        self.assertEqual(register_response.json()["registered_count"], 5)
+        self.assertEqual(register_response.json()["seats_left"], 5)
+
+        tickets_response = self.client.get("/api/me/registrations")
+        self.assertEqual(tickets_response.status_code, 200)
+        quantity_ticket = next(ticket for ticket in tickets_response.json() if ticket["event_id"] == event_id)
+        self.assertEqual(quantity_ticket["quantity"], 5)
+        self.assertEqual(quantity_ticket["total_price"], 60)
+
+    def test_api_rejects_more_than_five_tickets_per_account(self) -> None:
+        self.login("student@example.com", "Student123!")
+        event_id = self.client.get("/api/events").json()[0]["id"]
+
+        response = self.client.post(
+            f"/api/events/{event_id}/register",
+            json={
+                "quantity": 6,
+                "attendee_name": "Student Demo",
+                "attendee_email": "student@example.com",
+                "attendee_phone": "+84 912345678",
+            },
+        )
+        self.assertEqual(response.status_code, 422)
+
     def test_user_registration_history_returns_ticket_status(self) -> None:
         self.login("student@example.com", "Student123!")
         event_id = self.client.get("/api/events").json()[0]["id"]
@@ -365,6 +449,198 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(cancelled_tickets_response.status_code, 200)
         self.assertEqual(cancelled_tickets_response.json()[0]["status"], "cancelled")
         self.assertTrue(cancelled_tickets_response.json()[0]["cancelled_at"])
+    def test_user_can_top_up_wallet_and_view_wallet_overview(self) -> None:
+        self.login("student@example.com", "Student123!")
+
+        top_up_response = self.client.post(
+            "/api/me/wallet/top-up",
+            json={
+                "amount": 25,
+                "provider": "QR transfer",
+                "note": "Coursework wallet top-up",
+            },
+        )
+        self.assertEqual(top_up_response.status_code, 200)
+        self.assertTrue(top_up_response.json()["pending_top_up"]["qr_payload"])
+        self.assertEqual(top_up_response.json()["pending_top_up"]["status"], "pending")
+
+        wallet_response = self.client.get("/api/me/wallet")
+        self.assertEqual(wallet_response.status_code, 200)
+        self.assertEqual(len(wallet_response.json()["transactions"]), 0)
+        self.assertIsNotNone(wallet_response.json()["pending_top_up"])
+
+        confirm_response = self.client.post("/api/me/wallet/top-up/confirm")
+        self.assertEqual(confirm_response.status_code, 200)
+        self.assertEqual(confirm_response.json()["transaction"]["kind"], "top_up")
+        self.assertGreater(confirm_response.json()["user"]["balance"], 120)
+
+        wallet_after_confirm = self.client.get("/api/me/wallet")
+        self.assertEqual(wallet_after_confirm.status_code, 200)
+        self.assertGreaterEqual(len(wallet_after_confirm.json()["transactions"]), 1)
+        self.assertIsNone(wallet_after_confirm.json()["pending_top_up"])
+
+    def test_user_can_update_owned_event(self) -> None:
+        self.login("student@example.com", "Student123!")
+
+        create_response = self.client.post(
+            "/api/me/owned-events",
+            json={
+                "title": "Student Meetup",
+                "description": "Student-created meetup for peer networking.",
+                "category": "Community",
+                "location": "Innovation Hub",
+                "start_at": "2026-05-30T18:00:00",
+                "capacity": 25,
+                "price": 10,
+            },
+        )
+        self.assertEqual(create_response.status_code, 201)
+        event_id = create_response.json()["id"]
+
+        update_response = self.client.put(
+            f"/api/me/owned-events/{event_id}",
+            json={
+                "title": "Student Meetup Reloaded",
+                "description": "Updated student-created meetup for peer networking.",
+                "category": "Networking",
+                "location": "Creative Loft",
+                "venue_details": "Floor 5, Creative Loft, check-in beside the north staircase.",
+                "start_at": "2026-06-01T19:30:00",
+                "capacity": 40,
+                "price": 15,
+                "image_urls": ["/static/images/gallery-lounge.svg", "/static/images/gallery-stage.svg"],
+            },
+        )
+        self.assertEqual(update_response.status_code, 200)
+        self.assertEqual(update_response.json()["title"], "Student Meetup Reloaded")
+        self.assertEqual(update_response.json()["category"], "Networking")
+        self.assertEqual(update_response.json()["venue_details"], "Floor 5, Creative Loft, check-in beside the north staircase.")
+        self.assertEqual(update_response.json()["image_url"], "/static/images/gallery-lounge.svg")
+        self.assertEqual(update_response.json()["approval_status"], "pending")
+
+    def test_user_can_create_and_delete_owned_event(self) -> None:
+        self.login("student@example.com", "Student123!")
+
+        create_response = self.client.post(
+            "/api/me/owned-events",
+            json={
+                "title": "Personal Meetup",
+                "description": "User-created event for peer networking and discussion.",
+                "category": "Community",
+                "location": "Maker Space",
+                "start_at": "2026-06-10T18:00:00",
+                "capacity": 30,
+                "price": 12,
+            },
+        )
+        self.assertEqual(create_response.status_code, 201)
+        event_id = create_response.json()["id"]
+
+        owned_events_response = self.client.get("/api/me/owned-events")
+        self.assertEqual(owned_events_response.status_code, 200)
+        self.assertTrue(any(event["id"] == event_id for event in owned_events_response.json()))
+
+        delete_response = self.client.delete(f"/api/me/owned-events/{event_id}")
+        self.assertEqual(delete_response.status_code, 200)
+
+    def test_user_request_is_hidden_until_admin_approval(self) -> None:
+        self.login("student@example.com", "Student123!")
+        create_response = self.client.post(
+            "/api/me/owned-events",
+            json={
+                "title": "Pending API Request",
+                "description": "Request should stay off the public board until admin approval.",
+                "category": "Community",
+                "location": "Prototype Hall",
+                "start_at": "2026-06-15T18:00:00",
+                "capacity": 24,
+                "price": 11,
+                "latitude": 10.77652,
+                "longitude": 106.70098,
+            },
+        )
+        self.assertEqual(create_response.status_code, 201)
+        event_id = create_response.json()["id"]
+        self.assertEqual(create_response.json()["approval_status"], "pending")
+
+        public_events_response = self.client.get("/api/events")
+        self.assertEqual(public_events_response.status_code, 200)
+        self.assertFalse(any(event["id"] == event_id for event in public_events_response.json()))
+
+        self.client.post("/api/auth/logout")
+        self.login("admin@example.com", "Admin123!")
+
+        admin_events_response = self.client.get("/api/admin/events")
+        self.assertEqual(admin_events_response.status_code, 200)
+        pending_event = next(event for event in admin_events_response.json() if event["id"] == event_id)
+        self.assertEqual(pending_event["approval_status"], "pending")
+
+        approve_response = self.client.post(f"/api/admin/events/{event_id}/approve")
+        self.assertEqual(approve_response.status_code, 200)
+        approved_event = approve_response.json()
+        self.assertEqual(approved_event["approval_status"], "approved")
+        self.assertEqual(approved_event["latitude"], 10.77652)
+        self.assertEqual(approved_event["longitude"], 106.70098)
+
+        approved_public_events = self.client.get("/api/events")
+        self.assertEqual(approved_public_events.status_code, 200)
+        public_event = next(event for event in approved_public_events.json() if event["id"] == event_id)
+        self.assertEqual(public_event["latitude"], 10.77652)
+        self.assertEqual(public_event["longitude"], 106.70098)
+
+    def test_admin_can_reject_user_request(self) -> None:
+        self.login("student@example.com", "Student123!")
+        create_response = self.client.post(
+            "/api/me/owned-events",
+            json={
+                "title": "Rejected API Request",
+                "description": "Request should be returned for revision.",
+                "category": "Community",
+                "location": "Revision Hall",
+                "start_at": "2026-06-16T18:00:00",
+                "capacity": 16,
+                "price": 8,
+            },
+        )
+        self.assertEqual(create_response.status_code, 201)
+        event_id = create_response.json()["id"]
+
+        self.client.post("/api/auth/logout")
+        self.login("admin@example.com", "Admin123!")
+        reject_response = self.client.post(f"/api/admin/events/{event_id}/reject")
+        self.assertEqual(reject_response.status_code, 200)
+        self.assertEqual(reject_response.json()["approval_status"], "rejected")
+
+        public_events_response = self.client.get("/api/events")
+        self.assertEqual(public_events_response.status_code, 200)
+        self.assertFalse(any(event["id"] == event_id for event in public_events_response.json()))
+
+        self.client.post("/api/auth/logout")
+        self.login("student@example.com", "Student123!")
+        owned_events_response = self.client.get("/api/me/owned-events")
+        self.assertEqual(owned_events_response.status_code, 200)
+        rejected_event = next(event for event in owned_events_response.json() if event["id"] == event_id)
+        self.assertEqual(rejected_event["approval_status"], "rejected")
+
+    def test_user_can_change_password_from_security_page_api(self) -> None:
+        self.login("student@example.com", "Student123!")
+        change_response = self.client.post(
+            "/api/me/change-password",
+            json={
+                "current_password": "Student123!",
+                "new_password": "Student789!",
+            },
+        )
+        self.assertEqual(change_response.status_code, 200)
+
+        self.client.post("/api/auth/logout")
+        login_response = self.client.post(
+            "/api/auth/login",
+            json={"email": "student@example.com", "password": "Student789!"},
+        )
+        self.assertEqual(login_response.status_code, 200)
+
+
 
     def test_forgot_password_updates_credentials(self) -> None:
         response = self.client.post(

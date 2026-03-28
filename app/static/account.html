@@ -1,10 +1,10 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Account | EventHub Verify</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260317-user-flow-upgrade" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260324-account-split-pages" />
   </head>
   <body>
     <div class="app-shell">
@@ -18,7 +18,9 @@
             <div class="account-menu hidden" data-testid="account-menu">
               <p class="menu-name" data-testid="account-menu-name">User</p>
               <p class="menu-email" data-testid="account-menu-email">email@example.com</p>
-              <a class="menu-link" data-testid="account-profile-link" href="/account">Account details</a>
+              <a class="menu-link" data-testid="account-detail-link" href="/account">Account detail</a>
+              <a class="menu-link" data-testid="account-billing-link" href="/account/billing">Billing</a>
+              <a class="menu-link" data-testid="account-security-link" href="/account/security">Security &amp; Privacy</a>
               <button class="menu-link danger-link" data-testid="account-logout" type="button">Sign out</button>
             </div>
           </div>
@@ -32,26 +34,27 @@
               <div class="profile-avatar-large" data-testid="profile-avatar">U</div>
             </div>
             <div class="profile-header-copy">
-              <p class="eyebrow">Account</p>
+              <p class="eyebrow">Account detail</p>
               <h1 id="profile-name" data-testid="profile-name">Loading...</h1>
               <p id="profile-email" class="hero-copy"></p>
               <span id="profile-role" class="profile-role-chip">user</span>
             </div>
           </div>
           <div class="profile-header-actions">
-            <button class="secondary-button profile-edit-button" id="profile-edit-trigger" data-testid="profile-edit-trigger" type="button">
-              <span class="profile-edit-icon" aria-hidden="true">&#9998;</span>
-              Edit details
-            </button>
+            <a class="secondary-button profile-edit-button" href="/account/billing">Open billing</a>
           </div>
         </section>
 
-        <section class="page-section">
+        <section class="page-section" id="account-detail-section">
           <div class="section-heading">
             <div>
               <p class="eyebrow">Detailed information</p>
               <h2>User profile</h2>
             </div>
+            <button class="secondary-button profile-edit-button" id="profile-edit-trigger" data-testid="profile-edit-trigger" type="button">
+              <span class="profile-edit-icon" aria-hidden="true">&#9998;</span>
+              Edit details
+            </button>
           </div>
 
           <div class="profile-grid" data-testid="profile-grid">
@@ -105,12 +108,74 @@
           </div>
         </section>
 
+        <section class="page-section" id="account-owned-events-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">My events</p>
+              <h2>Create and manage your own events</h2>
+            </div>
+          </div>
+
+          <div class="owned-events-layout">
+            <section class="admin-card owned-event-form-card">
+              <div class="section-heading compact-heading">
+                <div>
+                  <p class="eyebrow">Create</p>
+                  <h3>Add your own event</h3>
+                </div>
+              </div>
+              <form id="owned-event-form" class="form-grid two-columns">
+                <label>
+                  Event title
+                  <input id="owned-event-title" type="text" required />
+                </label>
+                <label>
+                  Category
+                  <input id="owned-event-category" type="text" value="Community" required />
+                </label>
+                <label class="full-width">
+                  Description
+                  <textarea id="owned-event-description" rows="4" required></textarea>
+                </label>
+                <label>
+                  Location
+                  <input id="owned-event-location" type="text" required />
+                </label>
+                <label>
+                  Start time
+                  <input id="owned-event-start-at" type="datetime-local" required />
+                </label>
+                <label>
+                  Capacity
+                  <input id="owned-event-capacity" type="number" min="1" required />
+                </label>
+                <label>
+                  Ticket price (USD)
+                  <input id="owned-event-price" type="number" min="0" step="1" required />
+                </label>
+                <button class="primary-button full-width" id="owned-event-submit" type="submit">Create my event</button>
+              </form>
+            </section>
+
+            <section class="admin-card owned-event-list-card">
+              <div class="section-heading compact-heading">
+                <div>
+                  <p class="eyebrow">Inventory</p>
+                  <h3>Owned event list</h3>
+                </div>
+              </div>
+              <div id="owned-event-list" class="owned-event-list">Loading owned events...</div>
+            </section>
+          </div>
+        </section>
+
         <section class="page-section">
           <div class="section-heading">
             <div>
               <p class="eyebrow">My tickets</p>
               <h2>Registrations and ticket access</h2>
             </div>
+            <a class="secondary-button" href="/account/security">Security &amp; Privacy</a>
           </div>
           <div id="account-ticket-list" class="account-ticket-grid" data-testid="account-ticket-list">Loading tickets...</div>
         </section>
@@ -206,6 +271,6 @@
       </div>
     </div>
 
-    <script type="module" src="/static/account.js?v=20260317-user-flow-upgrade"></script>
+    <script type="module" src="/static/account.js?v=20260324-account-split-pages"></script>
   </body>
 </html>

@@ -1,5 +1,7 @@
 import {
   api,
+  attachLocationPicker,
+  buildLocationMapUrl,
   escapeHtml,
   formatCurrency,
   formatDateTime,
@@ -10,7 +12,7 @@ import {
   setupAccountMenu,
   showToast,
   toDatetimeLocal,
-} from "/static/shared.js?v=20260317-global-footer-routes";
+} from "/static/shared.js?v=20260328-location-coordinates";
 
 const eventGrid = document.querySelector("[data-testid='event-grid']");
 const refreshButton = document.querySelector("#refresh-events");
@@ -60,6 +62,17 @@ const adminImageClear = document.querySelector("#admin-image-clear");
 const adminImageGallery = document.querySelector("#admin-image-gallery");
 const adminImageFilesInput = document.querySelector("#admin-image-files");
 const adminImageDropzone = document.querySelector("#admin-image-dropzone");
+const dashboardRegistrationModal = document.querySelector("#dashboard-registration-modal");
+const dashboardRegistrationClose = document.querySelector("#dashboard-registration-close");
+const dashboardRegistrationCancel = document.querySelector("#dashboard-registration-cancel");
+const dashboardRegistrationForm = document.querySelector("#dashboard-registration-form");
+const dashboardRegistrationQuantity = document.querySelector("#dashboard-registration-quantity");
+const dashboardRegistrationName = document.querySelector("#dashboard-registration-name");
+const dashboardRegistrationEmail = document.querySelector("#dashboard-registration-email");
+const dashboardRegistrationPhone = document.querySelector("#dashboard-registration-phone");
+const dashboardRegistrationSummary = document.querySelector("#dashboard-registration-summary");
+const dashboardRegistrationQuantityFocus = document.querySelector("#dashboard-registration-quantity-focus");
+const dashboardRegistrationPriceFocus = document.querySelector("#dashboard-registration-price-focus");
 
 const DEFAULT_EVENT_IMAGE = "/static/images/default-event.svg";
 const currentPath = window.location.pathname;
@@ -69,6 +82,7 @@ const EVENT_SLIDE_INTERVAL_MS = 6000;
 const state = {
   user: null,
   events: [],
+  adminManagerEvents: [],
   attendees: [],
   analytics: null,
   adminDraftImages: [],
@@ -88,6 +102,7 @@ const state = {
     sort: "soonest",
   },
   hasSubmittedSearch: false,
+  dashboardRegistrationEventId: null,
 };
 
 function toTitleCase(value) {
@@ -95,6 +110,16 @@ function toTitleCase(value) {
     return "";
   }
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function formatApprovalStatus(status) {
+  if (status === "pending") {
+    return "Pending review";
+  }
+  if (status === "rejected") {
+    return "Needs revision";
+  }
+  return "Approved";
 }
 
 function excerpt(text, maxLength = 120) {
@@ -309,6 +334,135 @@ function renderEventMatchList() {
   eventMatchList.innerHTML = matchedEvents.map((event) => buildEventMatchMarkup(event)).join("");
 }
 
+function getEventById(eventId) {
+  return state.events.find((event) => Number(event.id) === Number(eventId)) || null;
+}
+
+function renderDashboardRegistrationSummary() {
+  const selectedEvent = getEventById(state.dashboardRegistrationEventId);
+  if (!dashboardRegistrationSummary || !selectedEvent) {
+    return;
+  }
+
+  const maxQuantity = Math.max(1, Math.min(5, Number(selectedEvent.seats_left || 0) || 1));
+  const requestedQuantity = Number(dashboardRegistrationQuantity?.value || 1);
+  const quantity = Math.max(1, Math.min(maxQuantity, Number.isFinite(requestedQuantity) ? requestedQuantity : 1));
+  if (dashboardRegistrationQuantity) {
+    dashboardRegistrationQuantity.value = String(quantity);
+    dashboardRegistrationQuantity.max = String(maxQuantity);
+  }
+  const pricePerTicket = Number(selectedEvent.price || selectedEvent.ticket_types?.[0]?.price || 0);
+  const totalPrice = pricePerTicket * quantity;
+
+  if (dashboardRegistrationQuantityFocus) {
+    dashboardRegistrationQuantityFocus.innerHTML = `
+      <span>Quantity</span>
+      <strong>${escapeHtml(String(quantity))} ticket${quantity > 1 ? "s" : ""}</strong>
+      <p class="subtle">Limit ${escapeHtml(String(maxQuantity))} for this event.</p>
+    `;
+  }
+
+  if (dashboardRegistrationPriceFocus) {
+    dashboardRegistrationPriceFocus.innerHTML = `
+      <span>Price</span>
+      <strong>${escapeHtml(formatCurrency(pricePerTicket))} per ticket</strong>
+      <p class="subtle">Total ${escapeHtml(formatCurrency(totalPrice))}</p>
+    `;
+  }
+
+  dashboardRegistrationSummary.innerHTML = `
+    <article class="detail-registration-summary-item">
+      <span>Event</span>
+      <strong>${escapeHtml(selectedEvent.title)}</strong>
+    </article>
+    <article class="detail-registration-summary-item">
+      <span>Attendee</span>
+      <strong>${escapeHtml(dashboardRegistrationName?.value.trim() || state.user?.name || "")}</strong>
+      <p class="subtle">${escapeHtml(dashboardRegistrationEmail?.value.trim() || state.user?.email || "")}</p>
+    </article>
+    <article class="detail-registration-summary-item">
+      <span>Venue</span>
+      <strong>${escapeHtml(selectedEvent.location)}</strong>
+      <p class="subtle">${escapeHtml(formatDateTime(selectedEvent.start_at))}</p>
+    </article>
+  `;
+}
+
+function openDashboardRegistrationModal(eventId) {
+  const selectedEvent = getEventById(eventId);
+  if (!selectedEvent || !dashboardRegistrationModal) {
+    return;
+  }
+  if (selectedEvent.is_registered) {
+    showToast("You already have a reservation for this event.");
+    return;
+  }
+  if (selectedEvent.seats_left <= 0) {
+    showToast("No seats left for this event.", "error");
+    return;
+  }
+
+  state.dashboardRegistrationEventId = selectedEvent.id;
+  const maxQuantity = Math.max(1, Math.min(5, Number(selectedEvent.seats_left || 0) || 1));
+  if (dashboardRegistrationQuantity) {
+    dashboardRegistrationQuantity.min = "1";
+    dashboardRegistrationQuantity.max = String(maxQuantity);
+    dashboardRegistrationQuantity.value = "1";
+  }
+  dashboardRegistrationName.value = state.user?.name || "";
+  dashboardRegistrationEmail.value = state.user?.email || "";
+  dashboardRegistrationPhone.value = state.user?.phone_number || "";
+  renderDashboardRegistrationSummary();
+  dashboardRegistrationModal.classList.remove("hidden");
+  dashboardRegistrationModal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+  dashboardRegistrationQuantity?.focus();
+}
+
+function closeDashboardRegistrationModal() {
+  dashboardRegistrationModal?.classList.add("hidden");
+  dashboardRegistrationModal?.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("modal-open");
+  dashboardRegistrationForm?.reset();
+  if (dashboardRegistrationSummary) {
+    dashboardRegistrationSummary.innerHTML = "";
+  }
+  if (dashboardRegistrationQuantityFocus) {
+    dashboardRegistrationQuantityFocus.innerHTML = "";
+  }
+  if (dashboardRegistrationPriceFocus) {
+    dashboardRegistrationPriceFocus.innerHTML = "";
+  }
+  state.dashboardRegistrationEventId = null;
+}
+
+async function handleDashboardRegistrationSubmit(event) {
+  event.preventDefault();
+  const selectedEvent = getEventById(state.dashboardRegistrationEventId);
+  if (!selectedEvent) {
+    return;
+  }
+
+  const maxQuantity = Math.max(1, Math.min(5, Number(selectedEvent.seats_left || 0) || 1));
+  const requestedQuantity = Number(dashboardRegistrationQuantity?.value || 1);
+  const quantity = Math.max(1, Math.min(maxQuantity, Number.isFinite(requestedQuantity) ? requestedQuantity : 1));
+
+  const updatedEvent = await api(`/api/events/${selectedEvent.id}/register`, {
+    method: "POST",
+    body: JSON.stringify({
+      quantity,
+      attendee_name: dashboardRegistrationName.value.trim(),
+      attendee_email: dashboardRegistrationEmail.value.trim(),
+      attendee_phone: dashboardRegistrationPhone.value.trim(),
+    }),
+  });
+  updateEventInState(updatedEvent);
+  renderEventGrid({ restartTimer: false });
+  renderEventSearchPanel();
+  closeDashboardRegistrationModal();
+  await syncAdminAnalyticsAfterReservation();
+  showToast(quantity > 1 ? `${quantity} seats reserved successfully.` : "Seat reserved successfully.");
+}
 function renderEventSearchPanel() {
   renderEventBoardState();
   renderEventMatchList();
@@ -337,6 +491,25 @@ function setAdminView(view = "event-board") {
     }
     button.classList.toggle("is-active", button.dataset.adminView === nextView);
   });
+
+  if (isAdmin && nextView === "manager") {
+    loadEvents()
+      .then(() => {
+        renderAdminManagerList();
+      })
+      .catch((error) => {
+        showToast(error.message || "Could not load the event inventory.", "error");
+      });
+    loadAdminManagerEvents().catch((error) => {
+      showToast(error.message || "Could not load the moderation queue.", "error");
+    });
+  }
+
+  if (isAdmin && nextView === "analysis") {
+    loadAdminAnalytics().catch((error) => {
+      showToast(error.message || "Could not load analytics.", "error");
+    });
+  }
 }
 
 function normalizeImageList(values) {
@@ -862,6 +1035,8 @@ function fillAdminForm(event) {
   document.querySelector("#admin-event-id").value = event.id;
   document.querySelector("#admin-title").value = event.title;
   document.querySelector("#admin-location").value = event.location;
+  document.querySelector("#admin-latitude").value = event.latitude ?? "";
+  document.querySelector("#admin-longitude").value = event.longitude ?? "";
   document.querySelector("#admin-description").value = event.description;
   document.querySelector("#admin-category").value = event.category || "";
   document.querySelector("#admin-event-format").value = event.event_format || "Offline";
@@ -871,7 +1046,6 @@ function fillAdminForm(event) {
   document.querySelector("#admin-capacity").value = event.capacity;
   document.querySelector("#admin-price").value = event.price;
   document.querySelector("#admin-organizer-name").value = event.organizer_name || "";
-  document.querySelector("#admin-organizer-details").value = event.organizer_details || "";
   document.querySelector("#admin-speaker-lineup").value = formatLineList(event.speaker_lineup || []);
   document.querySelector("#admin-ticket-types").value = formatTicketTypes(event.ticket_types || []);
   document.querySelector("#admin-map-url").value = event.map_url || "";
@@ -886,9 +1060,6 @@ function fillAdminForm(event) {
       ? `Editing ${state.adminDraftImages.length} gallery images for ${event.title}.`
       : "This event currently uses the default artwork. Add one or more images for the viewer carousel."
   );
-  document.querySelector("#admin-opening-highlights").value = event.opening_highlights || "";
-  document.querySelector("#admin-mid-event-highlights").value = event.mid_event_highlights || "";
-  document.querySelector("#admin-closing-highlights").value = event.closing_highlights || "";
 }
 
 function resetAdminForm() {
@@ -899,10 +1070,11 @@ function resetAdminForm() {
   document.querySelector("#admin-registration-deadline").value = "";
   document.querySelector("#admin-category").value = "";
   document.querySelector("#admin-organizer-name").value = "";
-  document.querySelector("#admin-organizer-details").value = "";
   document.querySelector("#admin-speaker-lineup").value = "";
   document.querySelector("#admin-ticket-types").value = "";
   document.querySelector("#admin-map-url").value = "";
+  document.querySelector("#admin-latitude").value = "";
+  document.querySelector("#admin-longitude").value = "";
   document.querySelector("#admin-contact-email").value = "";
   document.querySelector("#admin-contact-phone").value = "";
   document.querySelector("#admin-refund-policy").value = "";
@@ -959,7 +1131,7 @@ function renderAdminManagerList() {
     return;
   }
 
-  const events = Array.isArray(state.events) ? state.events : [];
+  const events = state.user?.role === "admin" ? (state.adminManagerEvents.length ? state.adminManagerEvents : state.events) : [];
   if (adminManagerCount) {
     adminManagerCount.textContent = `${events.length} ${events.length === 1 ? "event" : "events"}`;
   }
@@ -967,16 +1139,37 @@ function renderAdminManagerList() {
   if (!events.length) {
     adminManagerList.innerHTML = `
       <section class="admin-manager-empty">
-        <p class="eyebrow">Empty board</p>
-        <p class="subtle">There are no events yet. Use <strong>+ Add event</strong> to create the first one.</p>
+        <p class="eyebrow">Moderation queue</p>
+        <p class="subtle">There are no event requests waiting for review right now.</p>
       </section>
     `;
     return;
   }
 
   adminManagerList.innerHTML = events
-    .map(
-      (event) => `
+    .map((event) => {
+      const status = String(event.approval_status || "approved").toLowerCase();
+      const statusLabel = formatApprovalStatus(status);
+      const statusClass = `is-${status}`;
+      const moderationActions = [];
+      if (status === "pending" || status === "rejected") {
+        moderationActions.push(
+          `<button class="secondary-button image-card-button" data-action="approve-request" data-id="${event.id}" type="button">Approve</button>`
+        );
+      }
+      if (status === "pending" || status === "approved") {
+        moderationActions.push(
+          `<button class="secondary-button danger-button image-card-button" data-action="reject-request" data-id="${event.id}" type="button">${status === "approved" ? "Unpublish" : "Reject"}</button>`
+        );
+      }
+      const attendeeAction =
+        status === "approved"
+          ? `<button class="secondary-button image-card-button" data-action="attendees" data-id="${event.id}" type="button">Attendees</button>`
+          : "";
+      const reviewNote = event.review_note
+        ? `<p class="subtle admin-manager-review">${escapeHtml(event.review_note)}</p>`
+        : "";
+      return `
         <article class="admin-manager-item" data-testid="admin-manager-item-${event.id}">
           <img class="admin-manager-thumb" src="${escapeHtml(getPrimaryEventImage(event))}" alt="${escapeHtml(event.title)}" />
           <div class="admin-manager-body">
@@ -985,7 +1178,7 @@ function renderAdminManagerList() {
                 <strong>${escapeHtml(event.title)}</strong>
                 <p class="admin-manager-kicker">${escapeHtml(formatDateTime(event.start_at))}</p>
               </div>
-              <span class="image-order-chip">${escapeHtml(String(event.seats_left))} seats left</span>
+              <span class="image-order-chip manager-status-badge ${statusClass}">${escapeHtml(statusLabel)}</span>
             </div>
             <p class="subtle admin-manager-location">${escapeHtml(event.location)}</p>
             <div class="admin-manager-metrics">
@@ -993,15 +1186,17 @@ function renderAdminManagerList() {
               <span>${escapeHtml(String(event.registered_count))} registered</span>
               <span>${escapeHtml(String(event.capacity))} capacity</span>
             </div>
+            ${reviewNote}
           </div>
           <div class="admin-manager-actions">
+            ${moderationActions.join("")}
             <button class="secondary-button image-card-button" data-action="edit" data-id="${event.id}" type="button">Edit</button>
-            <button class="secondary-button image-card-button" data-action="attendees" data-id="${event.id}" type="button">Attendees</button>
+            ${attendeeAction}
             <button class="secondary-button danger-button image-card-button" data-action="delete" data-id="${event.id}" type="button">Delete</button>
           </div>
         </article>
-      `
-    )
+      `;
+    })
     .join("");
 }
 
@@ -1045,6 +1240,15 @@ async function loadEvents() {
   renderEventFilters();
   renderEventGrid();
   renderEventSearchPanel();
+}
+
+async function loadAdminManagerEvents() {
+  if (state.user?.role !== "admin") {
+    state.adminManagerEvents = [];
+    renderAdminManagerList();
+    return;
+  }
+  state.adminManagerEvents = await api("/api/admin/events");
   renderAdminManagerList();
 }
 
@@ -1059,13 +1263,20 @@ async function loadAdminAnalytics() {
 async function refreshDashboardData() {
   const tasks = [loadEvents()];
   if (state.user?.role === "admin") {
-    tasks.push(loadAdminAnalytics());
+    tasks.push(loadAdminManagerEvents(), loadAdminAnalytics());
   }
-  await Promise.all(tasks);
+  const results = await Promise.allSettled(tasks);
+  const firstFailure = results.find((result) => result.status === "rejected");
+  if (firstFailure && firstFailure.status === "rejected") {
+    throw firstFailure.reason;
+  }
 }
 
 function updateEventInState(updatedEvent) {
   state.events = state.events.map((event) => (event.id === updatedEvent.id ? { ...event, ...updatedEvent } : event));
+  state.adminManagerEvents = state.adminManagerEvents.map((event) =>
+    event.id === updatedEvent.id ? { ...event, ...updatedEvent } : event
+  );
   renderEventSearchPanel();
   renderAdminManagerList();
 }
@@ -1074,7 +1285,7 @@ async function syncAdminAnalyticsAfterReservation() {
   if (state.user?.role !== "admin") {
     return;
   }
-  await loadAdminAnalytics();
+  await Promise.all([loadAdminAnalytics(), loadAdminManagerEvents()]);
 }
 
 async function handleGridAction(target) {
@@ -1084,11 +1295,7 @@ async function handleGridAction(target) {
   }
 
   if (target.dataset.action === "register") {
-    const updatedEvent = await api(`/api/events/${eventId}/register`, { method: "POST" });
-    updateEventInState(updatedEvent);
-    renderEventGrid({ restartTimer: false });
-    await syncAdminAnalyticsAfterReservation();
-    showToast("Seat reserved successfully.");
+    openDashboardRegistrationModal(eventId);
     return;
   }
 
@@ -1101,6 +1308,22 @@ async function handleGridAction(target) {
     return;
   }
 
+  if (target.dataset.action === "approve-request") {
+    await api(`/api/admin/events/${eventId}/approve`, { method: "POST" });
+    showToast("Event request approved.");
+    await refreshDashboardData();
+    return;
+  }
+
+  if (target.dataset.action === "reject-request") {
+    await api(`/api/admin/events/${eventId}/reject`, { method: "POST" });
+    state.attendees = [];
+    renderAttendees('Select an event and click "Attendees".');
+    showToast("Event request sent back for revision.");
+    await refreshDashboardData();
+    return;
+  }
+
   if (target.dataset.action === "edit") {
     openAdminModal("edit", await api(`/api/events/${eventId}`));
     return;
@@ -1109,13 +1332,9 @@ async function handleGridAction(target) {
   if (target.dataset.action === "delete") {
     await api(`/api/admin/events/${eventId}`, { method: "DELETE" });
     state.attendees = [];
-    renderAttendees("Select an event and click \"Attendees\".");
+    renderAttendees('Select an event and click "Attendees".');
     showToast("Event deleted.");
-    try {
     await refreshDashboardData();
-  } catch (error) {
-    showToast(error.message, "error");
-  }
     return;
   }
 
@@ -1129,9 +1348,14 @@ async function handleAdminSubmit(event) {
   event.preventDefault();
   const eventId = document.querySelector("#admin-event-id").value;
   const price = Number(document.querySelector("#admin-price").value);
+  const locationValue = document.querySelector("#admin-location").value.trim();
+  const latitudeValue = document.querySelector("#admin-latitude").value.trim();
+  const longitudeValue = document.querySelector("#admin-longitude").value.trim();
+  const latitude = latitudeValue ? Number(latitudeValue) : null;
+  const longitude = longitudeValue ? Number(longitudeValue) : null;
   const payload = {
     title: document.querySelector("#admin-title").value,
-    location: document.querySelector("#admin-location").value,
+    location: locationValue,
     description: document.querySelector("#admin-description").value,
     category: document.querySelector("#admin-category").value,
     event_format: document.querySelector("#admin-event-format").value,
@@ -1141,19 +1365,21 @@ async function handleAdminSubmit(event) {
     capacity: Number(document.querySelector("#admin-capacity").value),
     price,
     organizer_name: document.querySelector("#admin-organizer-name").value,
-    organizer_details: document.querySelector("#admin-organizer-details").value,
+    organizer_details: "",
     speaker_lineup: parseLineList(document.querySelector("#admin-speaker-lineup").value),
     ticket_types: parseTicketTypes(document.querySelector("#admin-ticket-types").value, price),
-    map_url: document.querySelector("#admin-map-url").value,
+    latitude,
+    longitude,
+    map_url: document.querySelector("#admin-map-url").value.trim() || buildLocationMapUrl(locationValue, latitude, longitude),
     contact_email: document.querySelector("#admin-contact-email").value,
     contact_phone: document.querySelector("#admin-contact-phone").value,
     refund_policy: document.querySelector("#admin-refund-policy").value,
     check_in_policy: document.querySelector("#admin-check-in-policy").value,
     image_url: state.adminDraftImages[0] || "",
     image_urls: state.adminDraftImages,
-    opening_highlights: document.querySelector("#admin-opening-highlights").value,
-    mid_event_highlights: document.querySelector("#admin-mid-event-highlights").value,
-    closing_highlights: document.querySelector("#admin-closing-highlights").value,
+    opening_highlights: "",
+    mid_event_highlights: "",
+    closing_highlights: "",
   };
   const method = eventId ? "PUT" : "POST";
   const url = eventId ? `/api/admin/events/${eventId}` : "/api/admin/events";
@@ -1177,6 +1403,13 @@ async function boot() {
 
   setupAccountMenu(state.user);
   setupGlobalFooter(state.user);
+  attachLocationPicker({
+    inputSelector: "#admin-location",
+    buttonSelector: "#admin-location-picker",
+    mapUrlSelector: "#admin-map-url",
+    latitudeSelector: "#admin-latitude",
+    longitudeSelector: "#admin-longitude",
+  });
   welcomeText.textContent = `Welcome, ${state.user.name}`;
   roleChip.textContent = toTitleCase(state.user.role);
   document.querySelector("#admin-price").value = 0;
@@ -1213,6 +1446,29 @@ async function boot() {
     applyBoardFilters();
   });
   eventSearchSubmitButton?.addEventListener("click", applyBoardFilters);
+
+  dashboardRegistrationClose?.addEventListener("click", closeDashboardRegistrationModal);
+  dashboardRegistrationCancel?.addEventListener("click", closeDashboardRegistrationModal);
+  dashboardRegistrationForm?.addEventListener("submit", async (event) => {
+    try {
+      await handleDashboardRegistrationSubmit(event);
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
+  dashboardRegistrationModal?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    if (target.closest('[data-action="close-dashboard-registration"]')) {
+      closeDashboardRegistrationModal();
+    }
+  });
+  [dashboardRegistrationQuantity, dashboardRegistrationName, dashboardRegistrationEmail, dashboardRegistrationPhone].forEach((element) => {
+    element?.addEventListener("input", renderDashboardRegistrationSummary);
+    element?.addEventListener("change", renderDashboardRegistrationSummary);
+  });
 
   eventGrid.addEventListener("click", async (event) => {
     const target = event.target;
@@ -1338,7 +1594,14 @@ async function boot() {
     }
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && adminEventModal && !adminEventModal.classList.contains("hidden")) {
+    if (event.key !== "Escape") {
+      return;
+    }
+    if (dashboardRegistrationModal && !dashboardRegistrationModal.classList.contains("hidden")) {
+      closeDashboardRegistrationModal();
+      return;
+    }
+    if (adminEventModal && !adminEventModal.classList.contains("hidden")) {
       closeAdminModal();
     }
   });
@@ -1470,7 +1733,17 @@ async function boot() {
     });
   }
 
-  await refreshDashboardData();
+  try {
+    await refreshDashboardData();
+  } catch (error) {
+    showToast(error.message || "Could not load dashboard data.", "error");
+  }
 }
 
 boot();
+
+
+
+
+
+

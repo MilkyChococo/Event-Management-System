@@ -18,11 +18,17 @@ from app.schemas import (
     ForgotPasswordInput,
     LoginInput,
     MessageOutput,
+    OwnedEventCreateInput,
+    PasswordChangeInput,
     RegistrationInput,
     UserCreate,
     UserOutput,
     UserTicketOutput,
     UserUpdateInput,
+    WalletOverviewOutput,
+    WalletTopUpConfirmOutput,
+    WalletTopUpInput,
+    WalletTopUpOutput,
 )
 from app.services import EventRegistrationService, ServiceError
 
@@ -141,6 +147,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def account_page() -> FileResponse:
         return page_response("account.html")
 
+    @app.get("/account/billing", include_in_schema=False)
+    async def account_billing_page() -> FileResponse:
+        return page_response("billing.html")
+
+    @app.get("/account/security", include_in_schema=False)
+    async def account_security_page() -> FileResponse:
+        return page_response("security.html")
+
+    @app.get("/activity", include_in_schema=False)
+    async def activity_page() -> FileResponse:
+        return page_response("activity.html")
+
     @app.get("/aboutus", include_in_schema=False)
     async def aboutus_page() -> FileResponse:
         return page_response("aboutus.html")
@@ -230,6 +248,69 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> list[dict]:
         return service.list_user_registrations(user["id"])
 
+    @app.get("/api/me/wallet", response_model=WalletOverviewOutput)
+    async def get_my_wallet(
+        service: EventRegistrationService = Depends(get_service),
+        user: dict = Depends(require_user),
+    ) -> dict:
+        return service.get_wallet_overview(user["id"])
+
+    @app.post("/api/me/wallet/top-up", response_model=WalletTopUpOutput)
+    async def top_up_my_wallet(
+        payload: WalletTopUpInput,
+        service: EventRegistrationService = Depends(get_service),
+        user: dict = Depends(require_user),
+    ) -> dict:
+        return service.top_up_wallet(user["id"], payload.amount, payload.provider, payload.note)
+
+    @app.post("/api/me/wallet/top-up/confirm", response_model=WalletTopUpConfirmOutput)
+    async def confirm_my_wallet_top_up(
+        service: EventRegistrationService = Depends(get_service),
+        user: dict = Depends(require_user),
+    ) -> dict:
+        return service.confirm_top_up_wallet(user["id"])
+
+    @app.post("/api/me/change-password", response_model=UserOutput)
+    async def change_my_password(
+        payload: PasswordChangeInput,
+        service: EventRegistrationService = Depends(get_service),
+        user: dict = Depends(require_user),
+    ) -> dict:
+        return service.change_password(user["id"], payload.current_password, payload.new_password)
+
+    @app.get("/api/me/owned-events", response_model=list[EventOutput])
+    async def get_my_owned_events(
+        service: EventRegistrationService = Depends(get_service),
+        user: dict = Depends(require_user),
+    ) -> list[dict]:
+        return service.list_owned_events(user["id"])
+
+    @app.post("/api/me/owned-events", response_model=EventOutput, status_code=status.HTTP_201_CREATED)
+    async def create_my_owned_event(
+        payload: OwnedEventCreateInput,
+        service: EventRegistrationService = Depends(get_service),
+        user: dict = Depends(require_user),
+    ) -> dict:
+        return service.create_owned_event(user["id"], payload.model_dump())
+
+    @app.put("/api/me/owned-events/{event_id}", response_model=EventOutput)
+    async def update_my_owned_event(
+        event_id: int,
+        payload: OwnedEventCreateInput,
+        service: EventRegistrationService = Depends(get_service),
+        user: dict = Depends(require_user),
+    ) -> dict:
+        return service.update_owned_event(user["id"], event_id, payload.model_dump())
+
+    @app.delete("/api/me/owned-events/{event_id}", response_model=MessageOutput)
+    async def delete_my_owned_event(
+        event_id: int,
+        service: EventRegistrationService = Depends(get_service),
+        user: dict = Depends(require_user),
+    ) -> dict[str, str]:
+        service.delete_owned_event(user["id"], event_id)
+        return {"message": "Owned event deleted."}
+
     @app.get("/api/events", response_model=list[EventOutput])
     async def list_events(
         service: EventRegistrationService = Depends(get_service),
@@ -271,6 +352,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         _: dict = Depends(require_admin),
     ) -> list[dict]:
         return service.list_attendees(event_id)
+
+    @app.get("/api/admin/events", response_model=list[EventOutput])
+    async def list_admin_events(
+        service: EventRegistrationService = Depends(get_service),
+        _: dict = Depends(require_admin),
+    ) -> list[dict]:
+        return service.list_admin_events()
+
+    @app.post("/api/admin/events/{event_id}/approve", response_model=EventOutput)
+    async def approve_event_request(
+        event_id: int,
+        service: EventRegistrationService = Depends(get_service),
+        _: dict = Depends(require_admin),
+    ) -> dict:
+        return service.approve_event_request(event_id)
+
+    @app.post("/api/admin/events/{event_id}/reject", response_model=EventOutput)
+    async def reject_event_request(
+        event_id: int,
+        service: EventRegistrationService = Depends(get_service),
+        _: dict = Depends(require_admin),
+    ) -> dict:
+        return service.reject_event_request(event_id)
 
     @app.post("/api/admin/events", response_model=EventOutput, status_code=status.HTTP_201_CREATED)
     async def create_event(

@@ -9,7 +9,7 @@ COPY app ./app
 COPY .env.example ./.env.example
 
 ENV APP_ENV=production
-ENV APP_MONGO_URI=mongodb://mongo:27017
+ENV APP_MONGO_URI=mongodb://mongo:10105
 ENV APP_MONGO_DB_NAME=event_registration
 ENV APP_SEED_DEMO=true
 

@@ -142,6 +142,432 @@ export function formatDateTime(value) {
       });
 }
 
+export function buildLocationMapUrl(query, latitude = null, longitude = null) {
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+  }
+  const target = String(query || "").trim() || "Ho Chi Minh City";
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(target)}`;
+}
+
+const LOCATION_PICKER_DEFAULT_VIEW = { latitude: 10.8231, longitude: 106.6297, zoom: 13 };
+const LEAFLET_CSS_ID = "leaflet-location-picker-css";
+const LEAFLET_JS_ID = "leaflet-location-picker-js";
+const LEAFLET_CSS_URL = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+const LEAFLET_JS_URL = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+let locationPickerAssetPromise = null;
+let locationPickerState = null;
+
+function parseCoordinateValue(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+  return Math.round(numeric * 1_000_000) / 1_000_000;
+}
+
+function hasCoordinates(latitude, longitude) {
+  return Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude));
+}
+
+function ensureExternalStylesheet(id, href) {
+  const existing = document.getElementById(id);
+  if (existing instanceof HTMLLinkElement) {
+    return Promise.resolve(existing);
+  }
+  return new Promise((resolve, reject) => {
+    const link = document.createElement("link");
+    link.id = id;
+    link.rel = "stylesheet";
+    link.href = href;
+    link.onload = () => resolve(link);
+    link.onerror = () => reject(new Error("Could not load map styles."));
+    document.head.appendChild(link);
+  });
+}
+
+function ensureExternalScript(id, src) {
+  const existing = document.getElementById(id);
+  if (existing instanceof HTMLScriptElement) {
+    if (window.L) {
+      return Promise.resolve(existing);
+    }
+    return new Promise((resolve, reject) => {
+      existing.addEventListener("load", () => resolve(existing), { once: true });
+      existing.addEventListener("error", () => reject(new Error("Could not load the map library.")), { once: true });
+    });
+  }
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.id = id;
+    script.src = src;
+    script.async = true;
+    script.onload = () => resolve(script);
+    script.onerror = () => reject(new Error("Could not load the map library."));
+    document.head.appendChild(script);
+  });
+}
+
+async function loadLocationPickerAssets() {
+  if (window.L) {
+    return window.L;
+  }
+  if (!locationPickerAssetPromise) {
+    locationPickerAssetPromise = Promise.all([
+      ensureExternalStylesheet(LEAFLET_CSS_ID, LEAFLET_CSS_URL),
+      ensureExternalScript(LEAFLET_JS_ID, LEAFLET_JS_URL),
+    ]).then(() => {
+      if (!window.L) {
+        throw new Error("Map library was loaded but Leaflet is unavailable.");
+      }
+      return window.L;
+    });
+  }
+  return locationPickerAssetPromise;
+}
+
+async function geocodeLocationQuery(query) {
+  const target = String(query || "").trim();
+  if (!target) {
+    return null;
+  }
+  const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(target)}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    throw new Error("Could not search this location right now.");
+  }
+  const payload = await response.json();
+  if (!Array.isArray(payload) || !payload.length) {
+    return null;
+  }
+  const first = payload[0];
+  return {
+    label: String(first.display_name || target).trim(),
+    latitude: parseCoordinateValue(first.lat),
+    longitude: parseCoordinateValue(first.lon),
+  };
+}
+
+async function reverseGeocodeLocation(latitude, longitude) {
+  const lat = parseCoordinateValue(latitude);
+  const lng = parseCoordinateValue(longitude);
+  if (lat === null || lng === null) {
+    return null;
+  }
+  const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    return null;
+  }
+  const payload = await response.json();
+  return String(payload?.display_name || "").trim() || null;
+}
+
+async function ensureLocationPickerModal() {
+  if (locationPickerState?.modal instanceof HTMLElement && document.body.contains(locationPickerState.modal)) {
+    await loadLocationPickerAssets();
+    return locationPickerState;
+  }
+
+  const L = await loadLocationPickerAssets();
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = `
+    <div id="location-picker-modal" class="admin-modal hidden" aria-hidden="true">
+      <div class="admin-modal-backdrop" data-location-action="close"></div>
+      <div class="admin-modal-dialog admin-card location-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="location-picker-title">
+        <div class="admin-modal-header">
+          <div>
+            <p class="eyebrow">Location picker</p>
+            <h3 id="location-picker-title">Choose a signature location</h3>
+            <p class="subtle">Search a venue, then drag the map until the fixed center marker sits on the exact point that should appear after approval.</p>
+          </div>
+          <button class="secondary-button" type="button" data-location-action="close">Close</button>
+        </div>
+        <div class="location-picker-stack">
+          <label class="full-width">
+            Search location
+            <div class="location-search-row">
+              <input id="location-picker-search" type="text" placeholder="Aster Hall, 14 Mercer Street, District 1" />
+              <button class="secondary-button" id="location-picker-search-button" type="button">Search</button>
+            </div>
+          </label>
+          <div class="detail-map-preview location-picker-preview">
+            <div id="location-picker-map" class="location-picker-map" aria-label="Interactive map picker"></div>
+            <div class="location-picker-center-marker" aria-hidden="true">
+              <svg class="location-picker-center-icon" viewBox="0 0 24 24" focusable="false">
+                <path d="M12 21s6-5.33 6-11a6 6 0 1 0-12 0c0 5.67 6 11 6 11Zm0-8.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5Z" fill="currentColor"/>
+              </svg>
+              <span class="location-picker-center-label">Center marker</span>
+            </div>
+            <p class="location-picker-helper">Keep the venue you want under the center marker, then confirm.</p>
+          </div>
+          <div class="location-picker-coordinates">
+            <strong id="location-picker-coordinates">Lat --, Lng --</strong>
+          </div>
+          <p id="location-picker-status" class="subtle">Search a venue to jump there, or place the marker manually.</p>
+        </div>
+        <div class="button-row">
+          <button class="primary-button" id="location-picker-confirm" type="button">Use this location</button>
+          <button class="secondary-button" type="button" data-location-action="close">Cancel</button>
+        </div>
+      </div>
+    </div>
+  `;
+  const modal = wrapper.firstElementChild;
+  if (!(modal instanceof HTMLElement)) {
+    throw new Error("Could not create location picker modal.");
+  }
+  document.body.appendChild(modal);
+
+  const searchInput = modal.querySelector("#location-picker-search");
+  const searchButton = modal.querySelector("#location-picker-search-button");
+  const mapElement = modal.querySelector("#location-picker-map");
+  const coordinates = modal.querySelector("#location-picker-coordinates");
+  const status = modal.querySelector("#location-picker-status");
+  const confirmButton = modal.querySelector("#location-picker-confirm");
+
+  if (!(searchInput instanceof HTMLInputElement) || !(searchButton instanceof HTMLButtonElement) || !(mapElement instanceof HTMLElement) || !(coordinates instanceof HTMLElement) || !(status instanceof HTMLElement) || !(confirmButton instanceof HTMLButtonElement)) {
+    throw new Error("Location picker controls are missing.");
+  }
+
+  const map = L.map(mapElement, { zoomControl: true, scrollWheelZoom: true }).setView(
+    [LOCATION_PICKER_DEFAULT_VIEW.latitude, LOCATION_PICKER_DEFAULT_VIEW.longitude],
+    LOCATION_PICKER_DEFAULT_VIEW.zoom
+  );
+
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors',
+  }).addTo(map);
+
+  let suppressNextMoveSync = false;
+
+  const close = () => {
+    modal.classList.add("hidden");
+    modal.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("modal-open");
+    locationPickerState.activeTarget = null;
+  };
+
+  const updateCoordinateText = (latitude, longitude) => {
+    coordinates.textContent = `Lat ${latitude.toFixed(6)}, Lng ${longitude.toFixed(6)}`;
+  };
+
+  const setSelectedPoint = async (latitude, longitude, options = {}) => {
+    const lat = parseCoordinateValue(latitude);
+    const lng = parseCoordinateValue(longitude);
+    if (lat === null || lng === null) {
+      return;
+    }
+    const { recenter = true, resolvedLabel = "", lookupAddress = false } = options;
+    if (recenter) {
+      suppressNextMoveSync = true;
+      const nextZoom = Math.max(map.getZoom() || LOCATION_PICKER_DEFAULT_VIEW.zoom, 15);
+      map.setView([lat, lng], nextZoom);
+    }
+    updateCoordinateText(lat, lng);
+    locationPickerState.selectedCoordinates = { latitude: lat, longitude: lng };
+
+    let label = String(resolvedLabel || "").trim();
+    if (!label && lookupAddress) {
+      status.textContent = "Resolving the centered point...";
+      try {
+        label = (await reverseGeocodeLocation(lat, lng)) || "";
+      } catch {
+        label = "";
+      }
+    }
+    if (label) {
+      searchInput.value = label;
+      locationPickerState.selectedLabel = label;
+      status.textContent = `Centered on ${label}. This exact point will be used for the event.`;
+    } else {
+      locationPickerState.selectedLabel = searchInput.value.trim();
+      status.textContent = "Map centered. Confirm to use this exact point for the event.";
+    }
+  };
+
+  const syncSelectedPointFromCenter = async (options = {}) => {
+    const center = map.getCenter();
+    await setSelectedPoint(center.lat, center.lng, { recenter: false, ...options });
+  };
+
+  const searchLocation = async () => {
+    const query = searchInput.value.trim();
+    if (!query) {
+      status.textContent = "Enter a venue or address before searching.";
+      return;
+    }
+    status.textContent = `Searching for ${query}...`;
+    try {
+      const result = await geocodeLocationQuery(query);
+      if (!result || result.latitude === null || result.longitude === null) {
+        status.textContent = "No matching place was found. Try a more specific address.";
+        return;
+      }
+      await setSelectedPoint(result.latitude, result.longitude, {
+        recenter: true,
+        resolvedLabel: result.label,
+        lookupAddress: false,
+      });
+    } catch (error) {
+      status.textContent = error.message || "Could not search this location.";
+    }
+  };
+
+  const apply = () => {
+    const selectedCoordinates = locationPickerState.selectedCoordinates;
+    if (!selectedCoordinates || !locationPickerState.activeTarget?.input) {
+      return;
+    }
+    const label = searchInput.value.trim() || locationPickerState.selectedLabel || `Pinned location (${selectedCoordinates.latitude}, ${selectedCoordinates.longitude})`;
+    locationPickerState.activeTarget.input.value = label;
+    locationPickerState.activeTarget.input.dispatchEvent(new Event("input", { bubbles: true }));
+
+    const mapUrlInput = locationPickerState.activeTarget.mapUrlInput;
+    if (mapUrlInput instanceof HTMLInputElement) {
+      mapUrlInput.value = buildLocationMapUrl(label, selectedCoordinates.latitude, selectedCoordinates.longitude);
+      mapUrlInput.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
+    const latitudeInput = locationPickerState.activeTarget.latitudeInput;
+    if (latitudeInput instanceof HTMLInputElement) {
+      latitudeInput.value = String(selectedCoordinates.latitude);
+      latitudeInput.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
+    const longitudeInput = locationPickerState.activeTarget.longitudeInput;
+    if (longitudeInput instanceof HTMLInputElement) {
+      longitudeInput.value = String(selectedCoordinates.longitude);
+      longitudeInput.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
+    close();
+  };
+
+  map.on("moveend", async () => {
+    if (suppressNextMoveSync) {
+      suppressNextMoveSync = false;
+      return;
+    }
+    await syncSelectedPointFromCenter({ lookupAddress: true });
+  });
+
+  modal.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    if (target.dataset.locationAction === "close") {
+      close();
+    }
+  });
+  searchButton.addEventListener("click", searchLocation);
+  searchInput.addEventListener("keydown", async (event) => {
+    if (event.key !== "Enter") {
+      return;
+    }
+    event.preventDefault();
+    await searchLocation();
+  });
+  confirmButton.addEventListener("click", apply);
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") {
+      return;
+    }
+    if (!modal.classList.contains("hidden")) {
+      close();
+    }
+  });
+
+  locationPickerState = {
+    modal,
+    searchInput,
+    searchButton,
+    map,
+    coordinates,
+    status,
+    confirmButton,
+    selectedCoordinates: {
+      latitude: LOCATION_PICKER_DEFAULT_VIEW.latitude,
+      longitude: LOCATION_PICKER_DEFAULT_VIEW.longitude,
+    },
+    selectedLabel: "",
+    setSelectedPoint,
+    searchLocation,
+    activeTarget: null,
+  };
+  updateCoordinateText(LOCATION_PICKER_DEFAULT_VIEW.latitude, LOCATION_PICKER_DEFAULT_VIEW.longitude);
+  return locationPickerState;
+}
+
+export function attachLocationPicker({
+  inputSelector,
+  buttonSelector,
+  mapUrlSelector = "",
+  latitudeSelector = "",
+  longitudeSelector = "",
+}) {
+  const input = document.querySelector(inputSelector);
+  const button = document.querySelector(buttonSelector);
+  const mapUrlInput = mapUrlSelector ? document.querySelector(mapUrlSelector) : null;
+  const latitudeInput = latitudeSelector ? document.querySelector(latitudeSelector) : null;
+  const longitudeInput = longitudeSelector ? document.querySelector(longitudeSelector) : null;
+  if (!(input instanceof HTMLInputElement) || !(button instanceof HTMLButtonElement)) {
+    return;
+  }
+  if (button.dataset.locationPickerBound === "true") {
+    return;
+  }
+
+  button.addEventListener("click", async () => {
+    try {
+      const state = await ensureLocationPickerModal();
+      state.activeTarget = {
+        input,
+        mapUrlInput: mapUrlInput instanceof HTMLInputElement ? mapUrlInput : null,
+        latitudeInput: latitudeInput instanceof HTMLInputElement ? latitudeInput : null,
+        longitudeInput: longitudeInput instanceof HTMLInputElement ? longitudeInput : null,
+      };
+      state.modal.classList.remove("hidden");
+      state.modal.setAttribute("aria-hidden", "false");
+      document.body.classList.add("modal-open");
+      state.searchInput.value = input.value.trim();
+      const latitude = latitudeInput instanceof HTMLInputElement ? parseCoordinateValue(latitudeInput.value) : null;
+      const longitude = longitudeInput instanceof HTMLInputElement ? parseCoordinateValue(longitudeInput.value) : null;
+      if (latitude !== null && longitude !== null) {
+        await state.setSelectedPoint(latitude, longitude, {
+          recenter: true,
+          resolvedLabel: input.value.trim(),
+          lookupAddress: !input.value.trim(),
+        });
+      } else if (input.value.trim()) {
+        await state.searchLocation();
+      } else {
+        await state.setSelectedPoint(LOCATION_PICKER_DEFAULT_VIEW.latitude, LOCATION_PICKER_DEFAULT_VIEW.longitude, {
+          recenter: true,
+          resolvedLabel: "",
+          lookupAddress: false,
+        });
+        state.status.textContent = "Drag the map until the fixed center marker sits on the right venue point.";
+      }
+      window.setTimeout(() => {
+        state.map.invalidateSize();
+      }, 80);
+      state.searchInput.focus();
+      state.searchInput.select();
+    } catch (error) {
+      showToast(error.message || "Could not open the location picker.", "error");
+    }
+  });
+
+  button.dataset.locationPickerBound = "true";
+}
+
 export function toDatetimeLocal(value) {
   return value.slice(0, 16);
 }
@@ -216,17 +642,21 @@ export function setupAccountMenu(user) {
   const avatar = document.querySelector("[data-testid='account-avatar']");
   const name = document.querySelector("[data-testid='account-menu-name']");
   const email = document.querySelector("[data-testid='account-menu-email']");
-  const accountLink = document.querySelector("[data-testid='account-profile-link']");
+  const accountDetailLink = document.querySelector("[data-testid='account-detail-link']");
+  const accountBillingLink = document.querySelector("[data-testid='account-billing-link']");
+  const accountSecurityLink = document.querySelector("[data-testid='account-security-link']");
   const logout = document.querySelector("[data-testid='account-logout']");
 
-  if (!trigger || !menu || !avatar || !name || !email || !accountLink || !logout) {
+  if (!trigger || !menu || !avatar || !name || !email || !accountDetailLink || !accountBillingLink || !accountSecurityLink || !logout) {
     return;
   }
 
   renderUserAvatar(avatar, user, "account-avatar-image");
   name.textContent = user.name;
   email.textContent = user.email;
-  accountLink.href = "/account";
+  accountDetailLink.href = "/account";
+  accountBillingLink.href = "/account/billing";
+  accountSecurityLink.href = "/account/security";
 
   if (trigger.dataset.accountMenuBound === "true") {
     return;

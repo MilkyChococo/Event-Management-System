@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Dashboard | EventHub Verify</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260317-dashboard-nav-edge" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260328-location-coordinates" />
   </head>
   <body>
     <div class="app-shell">
@@ -14,6 +14,8 @@
           <div class="admin-topbar-nav" data-testid="topbar-about-nav">
             <span class="admin-topbar-separator" aria-hidden="true">|</span>
             <a class="admin-nav-button" href="/aboutus" data-testid="aboutus-link">About Us</a>
+            <span class="admin-topbar-separator" aria-hidden="true">|</span>
+            <a class="admin-nav-button" href="/activity" data-testid="activity-link">Your activity</a>
           </div>
           <div id="admin-topbar-nav" class="admin-topbar-nav hidden" data-testid="admin-topbar-nav">
             <span class="admin-topbar-separator" aria-hidden="true">|</span>
@@ -32,7 +34,9 @@
             <div class="account-menu hidden" data-testid="account-menu">
               <p class="menu-name" data-testid="account-menu-name">User</p>
               <p class="menu-email" data-testid="account-menu-email">email@example.com</p>
-              <a class="menu-link" data-testid="account-profile-link" href="/account">Account details</a>
+              <a class="menu-link" data-testid="account-detail-link" href="/account">Account detail</a>
+              <a class="menu-link" data-testid="account-billing-link" href="/account/billing">Billing</a>
+              <a class="menu-link" data-testid="account-security-link" href="/account/security">Security &amp; Privacy</a>
               <button class="menu-link danger-link" data-testid="account-logout" type="button">Sign out</button>
             </div>
           </div>
@@ -118,8 +122,8 @@
                 <div class="admin-studio-head">
                   <div>
                     <p class="eyebrow">Event Inventory</p>
-                    <h3>Current event inventory</h3>
-                    <p class="subtle">Review the events already stored in MongoDB, open any event in the edit modal with existing details, or delete it directly from the database.</p>
+                    <h3>Moderation queue and event inventory</h3>
+                    <p class="subtle">Review pending user event requests, approve or reject them, and keep the published event inventory under control.</p>
                   </div>
                   <div class="admin-manager-head-actions">
                     <span id="admin-manager-count" class="analytics-sidebar-count">0 events</span>
@@ -217,11 +221,20 @@
           </label>
           <label>
             Signature location
-            <input id="admin-location" type="text" required />
+            <div class="location-input-row">
+              <input id="admin-location" type="text" required />
+              <input id="admin-latitude" type="hidden" />
+              <input id="admin-longitude" type="hidden" />
+              <button class="secondary-button location-picker-trigger" id="admin-location-picker" type="button" aria-label="Open location picker">
+                <svg class="location-picker-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M12 21s6-5.33 6-11a6 6 0 1 0-12 0c0 5.67 6 11 6 11Zm0-8.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5Z" fill="currentColor"/>
+                </svg>
+              </button>
+            </div>
           </label>
           <label class="full-width">
-            Event description
-            <textarea id="admin-description" rows="4" required></textarea>
+            Description
+            <textarea id="admin-description" rows="5" placeholder="Write one clear description shown in the event detail page." required></textarea>
           </label>
           <label class="full-width">
             Venue details
@@ -258,10 +271,6 @@
           <label>
             Organizer name
             <input id="admin-organizer-name" type="text" placeholder="EventHub Verify Studio" />
-          </label>
-          <label class="full-width">
-            Organizer details
-            <textarea id="admin-organizer-details" rows="3" placeholder="Who is hosting the event and what makes the room feel credible?"></textarea>
           </label>
           <label class="full-width">
             Speaker lineup
@@ -316,18 +325,6 @@
             </div>
             <div id="admin-image-gallery" class="admin-image-gallery">No custom images added yet.</div>
           </div>
-          <label class="full-width">
-            Opening scene
-            <textarea id="admin-opening-highlights" rows="3" placeholder="What happens at the opening reception, arrival, or kickoff"></textarea>
-          </label>
-          <label class="full-width">
-            In the room
-            <textarea id="admin-mid-event-highlights" rows="3" placeholder="What guests experience during the main part of the event"></textarea>
-          </label>
-          <label class="full-width">
-            Closing mood
-            <textarea id="admin-closing-highlights" rows="3" placeholder="How the evening closes, after-party, awards, or final networking"></textarea>
-          </label>
           <div class="button-row full-width admin-modal-actions">
             <button class="primary-button" data-testid="admin-save" type="submit">Save event</button>
             <button class="secondary-button" id="admin-reset" type="button">Reset form</button>
@@ -337,6 +334,59 @@
       </div>
     </div>
 
-    <script type="module" src="/static/dashboard.js?v=20260317-dashboard-nav-revert"></script>
+    <div id="dashboard-registration-modal" class="admin-modal hidden" data-testid="dashboard-registration-modal" aria-hidden="true">
+  <div class="admin-modal-backdrop" data-action="close-dashboard-registration"></div>
+  <div class="admin-modal-dialog admin-card detail-registration-dialog" role="dialog" aria-modal="true" aria-labelledby="dashboard-registration-title">
+    <div class="admin-modal-header">
+      <div>
+        <p class="eyebrow">Registration flow</p>
+        <h3 id="dashboard-registration-title">Reserve your seat</h3>
+        <p class="subtle">Choose ticket quantity and attendee details without leaving the dashboard.</p>
+      </div>
+      <button class="secondary-button" id="dashboard-registration-close" type="button">Close</button>
+    </div>
+
+    <div class="detail-registration-shell">
+      <form id="dashboard-registration-form" class="form-grid detail-registration-form">
+        <label>
+          Ticket quantity
+          <input id="dashboard-registration-quantity" type="number" min="1" max="5" value="1" required />
+        </label>
+        <label>
+          Attendee name
+          <input id="dashboard-registration-name" type="text" required />
+        </label>
+        <label>
+          Attendee email
+          <input id="dashboard-registration-email" type="email" required />
+        </label>
+        <label>
+          Contact phone
+          <input id="dashboard-registration-phone" type="tel" required />
+        </label>
+        <div class="detail-registration-priority-row">
+          <article id="dashboard-registration-quantity-focus" class="detail-registration-focus-card"></article>
+          <article id="dashboard-registration-price-focus" class="detail-registration-focus-card is-price"></article>
+        </div>
+        <div class="button-row detail-registration-actions">
+          <button class="primary-button" id="dashboard-registration-submit" type="submit">Confirm reservation</button>
+          <button class="secondary-button" id="dashboard-registration-cancel" type="button">Cancel</button>
+        </div>
+      </form>
+
+      <aside class="detail-registration-summary">
+        <p class="eyebrow">Confirmation</p>
+        <div id="dashboard-registration-summary" class="detail-registration-summary-card"></div>
+      </aside>
+    </div>
+  </div>
+</div>
+<script type="module" src="/static/dashboard.js?v=20260328-location-coordinates"></script>
   </body>
 </html>
+
+
+
+
+
+

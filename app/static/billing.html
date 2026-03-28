@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Billing | EventHub Verify</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260328-balance-inline-large" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="secondary-link" href="/dashboard">&#8592; Back to dashboard</a>
+        <div class="topbar-actions">
+          <div class="account-anchor">
+            <button class="account-trigger" data-testid="account-trigger" type="button" aria-label="Account">
+              <span data-testid="account-avatar">U</span>
+            </button>
+            <div class="account-menu hidden" data-testid="account-menu">
+              <p class="menu-name" data-testid="account-menu-name">User</p>
+              <p class="menu-email" data-testid="account-menu-email">email@example.com</p>
+              <a class="menu-link" data-testid="account-detail-link" href="/account">Account detail</a>
+              <a class="menu-link" data-testid="account-billing-link" href="/account/billing">Billing</a>
+              <a class="menu-link" data-testid="account-security-link" href="/account/security">Security &amp; Privacy</a>
+              <button class="menu-link danger-link" data-testid="account-logout" type="button">Sign out</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="page-shell account-page">
+        <section class="profile-header-card">
+          <div class="profile-header-main">
+            <div class="profile-avatar-stack">
+              <div class="profile-avatar-large" data-testid="profile-avatar">U</div>
+            </div>
+            <div class="profile-header-copy">
+              <h1>Billing</h1>
+            </div>
+          </div>
+        </section>
+
+        <section class="page-section" id="account-billing-section">
+          <div class="wallet-summary-grid">
+            <article class="profile-field full-width-card wallet-balance-inline-card">
+              <strong>Balance: <span id="wallet-balance" class="wallet-balance-inline-value">$0</span></strong>
+            </article>
+          </div>
+
+          <div class="billing-shell billing-accordion" aria-label="Billing sections">
+            <section class="billing-accordion-item" data-billing-item="topup">
+              <button class="billing-sidebar-item" data-billing-toggle="topup" type="button" aria-expanded="false">
+                <div>
+                  <h3>Add balance</h3>
+                </div>
+                <span class="billing-sidebar-icon" data-billing-icon>v</span>
+              </button>
+              <section class="admin-card billing-panel hidden" data-billing-panel="topup">
+                <div class="section-heading compact-heading">
+                  <div>
+                    <p class="eyebrow">Top up balance</p>
+                  </div>
+                </div>
+                <div class="billing-topup-layout">
+                  <div class="billing-qr-stage">
+                    <div id="wallet-qr-empty" class="billing-qr-empty">
+                      <p class="eyebrow">QR preview</p>
+                      <h4>Generate a QR request</h4>
+                      <p class="subtle">A payment request stays active for 30 seconds. If nobody confirms it in time, it is cancelled automatically.</p>
+                    </div>
+                    <div id="wallet-qr-shell" class="wallet-qr-shell billing-qr-shell hidden">
+                      <img id="wallet-qr-image" class="wallet-qr-image billing-qr-image" alt="Top-up QR" />
+                      <div class="wallet-qr-copy billing-qr-copy">
+                        <strong>Latest QR payload</strong>
+                        <code id="wallet-qr-payload"></code>
+                        <button class="secondary-button" id="wallet-confirm-button" type="button">Confirm payment</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="billing-topup-form-wrap">
+                    <form id="wallet-topup-form" class="form-grid billing-topup-form">
+                      <label>
+                        Amount (USD)
+                        <input id="wallet-topup-amount" type="number" min="1" step="1" required />
+                      </label>
+                      <label>
+                        Note
+                        <input id="wallet-topup-note" type="text" placeholder="Add balance for event reservations" />
+                      </label>
+                      <button class="primary-button" id="wallet-topup-submit" type="submit">Generate QR &amp; Add balance</button>
+                    </form>
+                  </div>
+                </div>
+              </section>
+            </section>
+
+            <section class="billing-accordion-item" data-billing-item="transactions">
+              <button class="billing-sidebar-item" data-billing-toggle="transactions" type="button" aria-expanded="false">
+                <div>
+                  <h3>Transactions</h3>
+                </div>
+                <span class="billing-sidebar-icon" data-billing-icon>v</span>
+              </button>
+              <section class="admin-card billing-panel hidden" data-billing-panel="transactions">
+                <div class="section-heading compact-heading">
+                  <div>
+                    <p class="eyebrow">Transactions</p>
+                  </div>
+                </div>
+                <div id="wallet-transaction-list" class="wallet-transaction-list billing-transaction-list">Loading wallet activity...</div>
+              </section>
+            </section>
+
+            <section class="billing-accordion-item" data-billing-item="export">
+              <button class="billing-sidebar-item" data-billing-toggle="export" type="button" aria-expanded="false">
+                <div>
+                  <h3>Billing Export</h3>
+                </div>
+                <span class="billing-sidebar-icon" data-billing-icon>v</span>
+              </button>
+              <section class="admin-card billing-panel hidden" data-billing-panel="export">
+                <div class="section-heading compact-heading">
+                  <div>
+                    <p class="eyebrow">Billing Export</p>
+                  </div>
+                </div>
+                <div class="billing-export-stack">
+                  <div class="billing-export-toolbar">
+                    <div class="billing-export-range-group" role="tablist" aria-label="Billing export ranges">
+                      <button class="billing-export-range-button" data-export-range="day" type="button">Day</button>
+                      <button class="billing-export-range-button is-active" data-export-range="month" type="button">Month</button>
+                      <button class="billing-export-range-button" data-export-range="year" type="button">Year</button>
+                    </div>
+                    <button class="secondary-button" id="wallet-export-button" type="button">Download billing CSV</button>
+                  </div>
+                  <div id="wallet-export-summary" class="billing-export-summary"></div>
+                  <div class="billing-export-surface">
+                    <div id="wallet-export-chart" class="billing-export-chart" aria-live="polite"></div>
+                    <p id="wallet-export-empty" class="subtle billing-export-empty hidden"></p>
+                  </div>
+                </div>
+              </section>
+            </section>
+          </div>
+        </section>
+      </main>
+      <div class="global-footer-host" data-global-footer-host></div>
+    </div>
+
+    <script type="module" src="/static/billing.js?v=20260328-balance-inline-large"></script>
+  </body>
+</html>
+
