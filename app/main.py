@@ -18,6 +18,7 @@ from app.schemas import (
     ForgotPasswordInput,
     LoginInput,
     MessageOutput,
+    NotificationListOutput,
     OwnedEventCreateInput,
     PasswordChangeInput,
     RegistrationInput,
@@ -232,6 +233,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/me", response_model=UserOutput)
     async def get_me(user: dict = Depends(require_user)) -> dict:
         return user
+
+    @app.get("/api/me/notifications", response_model=NotificationListOutput)
+    async def get_my_notifications(
+        service: EventRegistrationService = Depends(get_service),
+        user: dict = Depends(require_user),
+    ) -> dict:
+        return service.list_notifications(user["id"])
+
+    @app.post("/api/me/notifications/read-all", response_model=MessageOutput)
+    async def mark_my_notifications_read(
+        service: EventRegistrationService = Depends(get_service),
+        user: dict = Depends(require_user),
+    ) -> dict[str, str]:
+        return service.mark_notifications_read(user["id"])
 
     @app.put("/api/me", response_model=UserOutput)
     async def update_me(

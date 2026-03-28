@@ -30,6 +30,7 @@ DEFAULT_STARTING_BALANCE = 120.0
 WALLET_QR_EXPIRY_SECONDS = 30
 MAX_TICKETS_PER_USER_PER_EVENT = 5
 CANCELLED_REGISTRATION_RETENTION = timedelta(days=1)
+NOTIFICATION_RETENTION = timedelta(days=5)
 APPROVAL_APPROVED = "approved"
 APPROVAL_PENDING = "pending"
 APPROVAL_REJECTED = "rejected"
@@ -953,6 +954,137 @@ class EventRegistrationService:
             "is_registered": is_registered,
         }
 
+    def _serialize_notification(self, document: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id": int(document["id"]),
+            "kind": str(document.get("kind") or "general"),
+            "title": str(document.get("title") or "Notification"),
+            "body": str(document.get("body") or ""),
+            "link": str(document.get("link") or ""),
+            "action_label": str(document.get("action_label") or "").strip() or None,
+            "is_read": bool(document.get("read_at")),
+            "created_at": str(document.get("created_at") or utc_now()),
+        }
+
+    def _list_admin_user_ids(self) -> list[int]:
+        return sorted(
+            {
+                int(document["id"])
+                for document in self.db.users.find({"role": "admin"}, {"_id": 0, "id": 1})
+                if "id" in document
+            }
+        )
+
+    def _create_notification(
+        self,
+        user_id: int,
+        kind: str,
+        title: str,
+        body: str,
+        link: str = "",
+        *,
+        action_label: str | None = None,
+        dedupe_key: str | None = None,
+    ) -> dict[str, Any] | None:
+        if not user_id:
+            return None
+
+        document: dict[str, Any] = {
+            "id": self.db.next_sequence("notifications"),
+            "user_id": int(user_id),
+            "kind": str(kind or "general").strip() or "general",
+            "title": str(title or "Notification").strip() or "Notification",
+            "body": str(body or "").strip(),
+            "link": str(link or "").strip(),
+            "action_label": str(action_label or "").strip(),
+            "created_at": utc_now(),
+            "read_at": None,
+        }
+        normalized_dedupe = str(dedupe_key or "").strip()
+        if normalized_dedupe:
+            document["dedupe_key"] = normalized_dedupe
+            existing = self.db.notifications.find_one({"user_id": int(user_id), "dedupe_key": normalized_dedupe})
+            if existing:
+                return None
+
+        try:
+            self.db.notifications.insert_one(document)
+        except DuplicateKeyError:
+            return None
+        return document
+
+    def _format_relative_time_label(self, seconds_remaining: int) -> str:
+        remaining = max(int(seconds_remaining or 0), 0)
+        if remaining < 60:
+            return "less than 1 minute"
+
+        days, remainder = divmod(remaining, 86_400)
+        hours, remainder = divmod(remainder, 3_600)
+        minutes = remainder // 60
+        parts: list[str] = []
+        if days:
+            parts.append(f"{days} day{'s' if days != 1 else ''}")
+        if hours:
+            parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
+        if not days and minutes:
+            parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
+        return " ".join(parts[:2]) or "less than 1 minute"
+
+    def _purge_expired_notifications(self, user_id: int) -> None:
+        cutoff = datetime.now(timezone.utc) - NOTIFICATION_RETENTION
+        stale_ids: list[Any] = []
+        notifications = self.db.notifications.find({"user_id": int(user_id)}, {"_id": 1, "created_at": 1})
+        for document in notifications:
+            created_at = document.get("created_at")
+            if not created_at:
+                continue
+            try:
+                created_at_dt = parse_utc_timestamp(created_at)
+            except Exception:
+                continue
+            if created_at_dt <= cutoff:
+                stale_ids.append(document.get("_id"))
+
+        stale_ids = [identifier for identifier in stale_ids if identifier is not None]
+        if stale_ids:
+            self.db.notifications.delete_many({"_id": {"$in": stale_ids}})
+
+    def _ensure_upcoming_event_notifications(self, user_id: int) -> None:
+        registrations = list(self.db.registrations.find({**self._active_registration_query(), "user_id": int(user_id)}))
+        if not registrations:
+            return
+
+        event_ids = sorted({int(registration["event_id"]) for registration in registrations})
+        events = {
+            int(document["id"]): self._normalize_event_document(document)
+            for document in self.db.events.find({"id": {"$in": event_ids}})
+            if document.get("approval_status") == APPROVAL_APPROVED
+        }
+        now = datetime.now(timezone.utc)
+        soon_cutoff = now + timedelta(days=1)
+
+        for registration in registrations:
+            event = events.get(int(registration["event_id"]))
+            if not event:
+                continue
+            try:
+                start_at = parse_utc_timestamp(event["start_at"])
+            except Exception:
+                continue
+            if start_at <= now or start_at > soon_cutoff:
+                continue
+
+            seconds_remaining = int((start_at - now).total_seconds())
+            self._create_notification(
+                int(user_id),
+                "event_reminder",
+                "Event starts soon",
+                f"{event['title']} starts in {self._format_relative_time_label(seconds_remaining)}.",
+                f"/events/{event['id']}/view",
+                action_label="View now",
+                dedupe_key=f"event-reminder:{event['id']}",
+            )
+
     def _percentage(self, numerator: float, denominator: float) -> float:
         if denominator <= 0:
             return 0.0
@@ -1123,6 +1255,7 @@ class EventRegistrationService:
             raise ServiceError(404, "ACCOUNT_NOT_FOUND", "Account does not exist.")
         if not verify_password(password, document["password_hash"]):
             raise ServiceError(401, "INVALID_CREDENTIALS", "Invalid email or password.")
+        self._purge_expired_notifications(int(document["id"]))
         return self._serialize_user(document)
 
     def reset_password(self, email: str, date_of_birth: str, new_password: str) -> None:
@@ -1403,6 +1536,21 @@ class EventRegistrationService:
             }
         )
         self.db.events.insert_one(document)
+        self._create_notification(
+            user_id,
+            "request_sent",
+            "Send Event Request",
+            f'You sent "{document["title"]}" to admin. Please wait for approval.',
+            "/activity",
+        )
+        for admin_user_id in self._list_admin_user_ids():
+            self._create_notification(
+                admin_user_id,
+                "request_review",
+                "New event request",
+                f'{user_document["name"]} sent "{document["title"]}" for review.',
+                "/admin/manager",
+            )
         return self.get_event(event_id, user_id=user_id)
 
     def update_owned_event(self, user_id: int, event_id: int, payload: dict[str, Any]) -> dict[str, Any]:
@@ -1477,6 +1625,22 @@ class EventRegistrationService:
         )
         if not updated:
             raise ServiceError(404, "EVENT_NOT_FOUND", "Owned event not found.")
+
+        self._create_notification(
+            user_id,
+            "request_resubmitted",
+            "Event Request Updated",
+            f'You updated "{normalized["title"]}" and sent it back to admin for approval.',
+            "/activity",
+        )
+        for admin_user_id in self._list_admin_user_ids():
+            self._create_notification(
+                admin_user_id,
+                "request_review",
+                "Updated event request",
+                f'{user_document["name"]} updated "{normalized["title"]}" and sent it back for review.',
+                "/admin/manager",
+            )
         return self.get_event(event_id, user_id=user_id)
 
     def delete_owned_event(self, user_id: int, event_id: int) -> None:
@@ -1484,6 +1648,23 @@ class EventRegistrationService:
         if not deleted:
             raise ServiceError(404, "EVENT_NOT_FOUND", "Owned event not found.")
         self.db.registrations.delete_many({"event_id": event_id})
+
+        title = str(deleted.get("title") or "Your event request")
+        self._create_notification(
+            user_id,
+            "request_deleted",
+            "Request deleted",
+            f'You deleted "{title}" from your activity queue.',
+            "/activity",
+        )
+        for admin_user_id in self._list_admin_user_ids():
+            self._create_notification(
+                admin_user_id,
+                "request_withdrawn",
+                "Request withdrawn",
+                f'The request "{title}" was deleted by its owner before review.',
+                "/admin/manager",
+            )
 
     def approve_event_request(self, event_id: int) -> dict[str, Any]:
         current = self.db.events.find_one({"id": event_id})
@@ -1497,7 +1678,17 @@ class EventRegistrationService:
         )
         if not updated:
             raise ServiceError(404, "EVENT_NOT_FOUND", "Event not found.")
-        return self.get_event(event_id, user_id=int(updated.get("created_by") or 0) or None)
+
+        owner_id = int(updated.get("created_by") or 0)
+        if owner_id:
+            self._create_notification(
+                owner_id,
+                "request_approved",
+                "Event approved",
+                f'"{updated.get("title") or "Your event"}" was approved and published on the event board.',
+                f"/events/{event_id}/view",
+            )
+        return self.get_event(event_id, user_id=owner_id or None)
 
     def reject_event_request(self, event_id: int) -> dict[str, Any]:
         current = self.db.events.find_one({"id": event_id})
@@ -1511,7 +1702,17 @@ class EventRegistrationService:
         )
         if not updated:
             raise ServiceError(404, "EVENT_NOT_FOUND", "Event not found.")
-        return self.get_event(event_id, user_id=int(updated.get("created_by") or 0) or None)
+
+        owner_id = int(updated.get("created_by") or 0)
+        if owner_id:
+            self._create_notification(
+                owner_id,
+                "request_rejected",
+                "Event needs revision",
+                f'"{updated.get("title") or "Your event"}" was rejected. Update the request and send it again.',
+                "/activity",
+            )
+        return self.get_event(event_id, user_id=owner_id or None)
 
     def list_user_registrations(self, user_id: int) -> list[dict[str, Any]]:
         if not self.db.users.find_one({"id": user_id}):
@@ -1521,11 +1722,37 @@ class EventRegistrationService:
         registrations = list(self.db.registrations.find({"user_id": user_id}).sort([("registered_at", -1), ("created_at", -1)]))
         event_ids = sorted({int(registration["event_id"]) for registration in registrations})
         events = {document["id"]: document for document in self.db.events.find({"id": {"$in": event_ids}})}
-        return [
+        tickets = [
             self._serialize_ticket(registration, events[registration["event_id"]])
             for registration in registrations
             if registration["event_id"] in events
         ]
+        self._ensure_upcoming_event_notifications(user_id)
+        return tickets
+
+    def list_notifications(self, user_id: int, limit: int = 12) -> list[dict[str, Any]] | dict[str, Any]:
+        if not self.db.users.find_one({"id": user_id}):
+            raise ServiceError(404, "ACCOUNT_NOT_FOUND", "Account does not exist.")
+
+        self._ensure_upcoming_event_notifications(user_id)
+        documents = list(
+            self.db.notifications.find({"user_id": int(user_id)}).sort([("created_at", DESCENDING), ("id", DESCENDING)]).limit(max(int(limit or 0), 1))
+        )
+        unread_count = self.db.notifications.count_documents({"user_id": int(user_id), "read_at": None})
+        return {
+            "unread_count": int(unread_count),
+            "items": [self._serialize_notification(document) for document in documents],
+        }
+
+    def mark_notifications_read(self, user_id: int) -> dict[str, str]:
+        if not self.db.users.find_one({"id": user_id}):
+            raise ServiceError(404, "ACCOUNT_NOT_FOUND", "Account does not exist.")
+
+        self.db.notifications.update_many(
+            {"user_id": int(user_id), "read_at": None},
+            {"$set": {"read_at": utc_now()}},
+        )
+        return {"message": "Notifications marked as read."}
 
     def list_events(self, user_id: int | None = None) -> list[dict[str, Any]]:
         active_registrations = list(self.db.registrations.find(self._active_registration_query(), {"_id": 0, "event_id": 1, "user_id": 1, "quantity": 1}))
@@ -1840,5 +2067,7 @@ class EventRegistrationService:
         event_title = str(event_document.get("title") or "") if event_document else ""
         self._refund_registration_charge(user_id, cancelled, event_title)
         return self.get_event(event_id, user_id=user_id)
+
+
 
 

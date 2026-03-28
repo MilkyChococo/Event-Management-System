@@ -8,11 +8,12 @@ import {
   getCurrentUser,
   redirectTo,
   renderUserAvatar,
+  requestNotificationRefresh,
   setupAccountMenu,
   setupGlobalFooter,
   showToast,
   toDatetimeLocal,
-} from "/static/shared.js?v=20260328-location-coordinates";
+} from "/static/shared.js?v=20260328-notification-reminder-cta";
 
 const DEFAULT_EVENT_IMAGE = "/static/images/default-event.svg";
 
@@ -43,6 +44,14 @@ const ownedEventCancel = document.querySelector("#activity-owned-event-cancel");
 const ownedEventList = document.querySelector("#activity-owned-event-list");
 const formKicker = document.querySelector("#activity-form-kicker");
 const formTitle = document.querySelector("#activity-form-title");
+const activityRequestModal = document.querySelector("#activity-request-modal");
+const activityRequestModalOpen = document.querySelector("#activity-open-request-modal");
+const activityRequestModalClose = document.querySelector("#activity-request-modal-close");
+const activityDeleteModal = document.querySelector("#activity-delete-modal");
+const activityDeleteClose = document.querySelector("#activity-delete-close");
+const activityDeleteCancel = document.querySelector("#activity-delete-cancel");
+const activityDeleteConfirm = document.querySelector("#activity-delete-confirm");
+const activityDeleteCopy = document.querySelector("#activity-delete-copy");
 const activityToggles = Array.from(document.querySelectorAll("[data-activity-toggle]"));
 const activityImageUrl = document.querySelector("#activity-image-url");
 const activityImageAdd = document.querySelector("#activity-image-add");
@@ -59,6 +68,7 @@ const state = {
   tickets: [],
   ownedEvents: [],
   editingEventId: null,
+  pendingDeleteEventId: null,
   draftImages: [],
   openPanels: new Set(["registrations"]),
 };
@@ -115,6 +125,81 @@ function renderActivityAccordion() {
   });
 }
 
+function syncActivityModalLock() {
+  const hasOpenModal = Boolean(document.querySelector(".admin-modal:not(.hidden)"));
+  document.body.classList.toggle("modal-open", hasOpenModal);
+}
+
+function openOwnedEventModal() {
+  if (!(activityRequestModal instanceof HTMLElement)) {
+    return;
+  }
+  activityRequestModal.classList.remove("hidden");
+  activityRequestModal.setAttribute("aria-hidden", "false");
+  syncActivityModalLock();
+  window.setTimeout(() => {
+    ownedEventTitle?.focus();
+    ownedEventTitle?.select();
+  }, 50);
+}
+
+function closeOwnedEventModal(reset = true) {
+  if (!(activityRequestModal instanceof HTMLElement)) {
+    return;
+  }
+  activityRequestModal.classList.add("hidden");
+  activityRequestModal.setAttribute("aria-hidden", "true");
+  syncActivityModalLock();
+  if (reset) {
+    resetOwnedEventForm();
+  }
+}
+
+function openDeleteConfirmModal(eventId) {
+  if (!(activityDeleteModal instanceof HTMLElement)) {
+    return;
+  }
+  const event = state.ownedEvents.find((item) => item.id === Number(eventId));
+  if (!event) {
+    return;
+  }
+  state.pendingDeleteEventId = Number(eventId);
+  if (activityDeleteCopy) {
+    activityDeleteCopy.textContent = `Delete "${event.title}" from your activity queue? This cannot be undone.`;
+  }
+  activityDeleteModal.classList.remove("hidden");
+  activityDeleteModal.setAttribute("aria-hidden", "false");
+  syncActivityModalLock();
+  window.setTimeout(() => {
+    activityDeleteConfirm?.focus();
+  }, 50);
+}
+
+function closeDeleteConfirmModal() {
+  if (!(activityDeleteModal instanceof HTMLElement)) {
+    return;
+  }
+  activityDeleteModal.classList.add("hidden");
+  activityDeleteModal.setAttribute("aria-hidden", "true");
+  state.pendingDeleteEventId = null;
+  syncActivityModalLock();
+}
+
+async function confirmOwnedEventDeletion() {
+  const eventId = Number(state.pendingDeleteEventId || 0);
+  if (!eventId) {
+    return;
+  }
+  await api(`/api/me/owned-events/${eventId}`, { method: "DELETE" });
+  if (state.editingEventId === eventId) {
+    closeOwnedEventModal();
+  }
+  requestNotificationRefresh();
+  closeDeleteConfirmModal();
+  showToast("Event request deleted.");
+  await loadActivityData();
+}
+
 function ticketStatusLabel(status) {
   if (status === "checked_in") {
     return "Checked in";
@@ -123,6 +208,40 @@ function ticketStatusLabel(status) {
     return "Cancelled";
   }
   return "Confirmed";
+}
+
+function hasValidatedMapLocation(input, latitudeInput, longitudeInput) {
+  const locationValue = input?.value.trim() || "";
+  const latitudeValue = latitudeInput?.value.trim() || "";
+  const longitudeValue = longitudeInput?.value.trim() || "";
+  if (!locationValue) {
+    return false;
+  }
+  if (input?.dataset.locationValidated === "true") {
+    return latitudeValue !== "" && longitudeValue !== "";
+  }
+  return false;
+}
+
+function buildCountdownState(startAt) {
+  const startDate = new Date(startAt || "");
+  if (Number.isNaN(startDate.getTime())) {
+    return {
+      label: "Starts in 0d0h0m",
+      isUrgent: false,
+    };
+  }
+
+  const diffMs = Math.max(startDate.getTime() - Date.now(), 0);
+  const totalMinutes = Math.floor(diffMs / 60000);
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+
+  return {
+    label: `Starts in ${days}d${hours}h${minutes}m`,
+    isUrgent: diffMs > 0 && diffMs <= 86400000,
+  };
 }
 
 function setDraftImages(images) {
@@ -313,6 +432,7 @@ function resetOwnedEventForm() {
   }
   if (ownedEventId) ownedEventId.value = "";
   if (ownedEventCategory) ownedEventCategory.value = "Community";
+  if (ownedEventLocation) ownedEventLocation.dataset.locationValidated = "false";
   if (ownedEventLatitude) ownedEventLatitude.value = "";
   if (ownedEventLongitude) ownedEventLongitude.value = "";
   if (ownedEventSubmit) ownedEventSubmit.textContent = "Send request";
@@ -331,7 +451,10 @@ function fillOwnedEventForm(event) {
   if (ownedEventCategory) ownedEventCategory.value = event.category || "Community";
   if (ownedEventDescription) ownedEventDescription.value = event.description || "";
   if (ownedEventVenueDetails) ownedEventVenueDetails.value = event.venue_details || "";
-  if (ownedEventLocation) ownedEventLocation.value = event.location || "";
+  if (ownedEventLocation) {
+    ownedEventLocation.value = event.location || "";
+    ownedEventLocation.dataset.locationValidated = event.latitude != null && event.longitude != null ? "true" : "false";
+  }
   if (ownedEventLatitude) ownedEventLatitude.value = event.latitude ?? "";
   if (ownedEventLongitude) ownedEventLongitude.value = event.longitude ?? "";
   if (ownedEventStartAt) ownedEventStartAt.value = toDatetimeLocal(event.start_at || "");
@@ -349,7 +472,7 @@ function fillOwnedEventForm(event) {
   );
   state.openPanels.add("studio");
   renderActivityAccordion();
-  ownedEventForm?.scrollIntoView({ behavior: "smooth", block: "start" });
+  openOwnedEventModal();
 }
 
 function renderMetrics() {
@@ -384,8 +507,9 @@ function renderJoinedEvents() {
   }
 
   joinedList.innerHTML = state.tickets
-    .map(
-      (ticket) => `
+    .map((ticket) => {
+      const countdown = buildCountdownState(ticket.start_at);
+      return `
         <article class="event-match-card activity-registration-card">
           <div class="event-match-copy activity-registration-copy">
             <div>
@@ -409,14 +533,18 @@ function renderJoinedEvents() {
                 <dt>Total</dt>
                 <dd>${escapeHtml(formatCurrency(ticket.total_price || ticket.ticket_price || 0))}</dd>
               </div>
+              <div class="activity-countdown-card ${countdown.isUrgent ? "is-urgent" : ""}">
+                <dt>Time Remains</dt>
+                <dd>${escapeHtml(countdown.label)}</dd>
+              </div>
             </dl>
           </div>
           <div class="event-match-actions activity-registration-actions">
             <a class="detail-link" href="/events/${ticket.event_id}/view">View detail</a>
           </div>
         </article>
-      `
-    )
+      `;
+    })
     .join("");
 }
 
@@ -505,6 +633,11 @@ function buildOwnedEventPayload() {
 
 async function handleOwnedEventSubmit(event) {
   event.preventDefault();
+  if (!hasValidatedMapLocation(ownedEventLocation, ownedEventLatitude, ownedEventLongitude)) {
+    showToast("Choose a valid signature location from the map before sending this request.", "error");
+    ownedEventLocation?.focus();
+    return;
+  }
   const payload = buildOwnedEventPayload();
   if (state.editingEventId) {
     await api(`/api/me/owned-events/${state.editingEventId}`, {
@@ -519,7 +652,8 @@ async function handleOwnedEventSubmit(event) {
     });
     showToast("Request sent for admin review.");
   }
-  resetOwnedEventForm();
+  requestNotificationRefresh();
+  closeOwnedEventModal();
   await loadActivityData();
 }
 
@@ -538,12 +672,7 @@ async function handleOwnedEventAction(target) {
   }
 
   if (target.dataset.action === "delete-owned-event") {
-    await api(`/api/me/owned-events/${eventId}`, { method: "DELETE" });
-    if (state.editingEventId === eventId) {
-      resetOwnedEventForm();
-    }
-    showToast("Event request deleted.");
-    await loadActivityData();
+    openDeleteConfirmModal(eventId);
   }
 }
 
@@ -589,8 +718,68 @@ async function boot() {
     }
   });
 
-  ownedEventCancel?.addEventListener("click", () => {
+  activityRequestModalOpen?.addEventListener("click", () => {
     resetOwnedEventForm();
+    state.openPanels.add("studio");
+    renderActivityAccordion();
+    openOwnedEventModal();
+  });
+
+  ownedEventCancel?.addEventListener("click", () => {
+    closeOwnedEventModal();
+  });
+
+  activityRequestModalClose?.addEventListener("click", () => {
+    closeOwnedEventModal();
+  });
+
+  activityRequestModal?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    if (target.dataset.activityModalAction === "close") {
+      closeOwnedEventModal();
+    }
+  });
+
+  activityDeleteClose?.addEventListener("click", () => {
+    closeDeleteConfirmModal();
+  });
+
+  activityDeleteCancel?.addEventListener("click", () => {
+    closeDeleteConfirmModal();
+  });
+
+  activityDeleteConfirm?.addEventListener("click", async () => {
+    try {
+      await confirmOwnedEventDeletion();
+    } catch (error) {
+      showToast(error.message || "Could not delete this request.", "error");
+    }
+  });
+
+  activityDeleteModal?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    if (target.dataset.activityDeleteAction === "close") {
+      closeDeleteConfirmModal();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") {
+      return;
+    }
+    if (!activityDeleteModal?.classList.contains("hidden")) {
+      closeDeleteConfirmModal();
+      return;
+    }
+    if (!activityRequestModal?.classList.contains("hidden")) {
+      closeOwnedEventModal();
+    }
   });
 
   activityImageAdd?.addEventListener("click", addImageFromInput);
@@ -691,3 +880,4 @@ async function boot() {
 }
 
 boot();
+

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
@@ -694,6 +695,101 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(me_response.json()["name"], "Profile Updated User")
         self.assertEqual(me_response.json()["avatar_url"], "/static/images/gallery-stage.svg")
 
+    def test_login_endpoint_purges_notifications_older_than_five_days(self) -> None:
+        service = self.client.app.state.service
+        student = service.db.users.find_one({"email": "student@example.com"})
+        old_created_at = (datetime.now(timezone.utc) - timedelta(days=6)).replace(microsecond=0).isoformat()
+        recent_created_at = (datetime.now(timezone.utc) - timedelta(days=1)).replace(microsecond=0).isoformat()
+        service.db.notifications.insert_many(
+            [
+                {
+                    "id": service.db.next_sequence("notifications"),
+                    "user_id": student["id"],
+                    "kind": "old_notice",
+                    "title": "Old notification",
+                    "body": "Should be removed on login.",
+                    "link": "/activity",
+                    "created_at": old_created_at,
+                    "read_at": None,
+                },
+                {
+                    "id": service.db.next_sequence("notifications"),
+                    "user_id": student["id"],
+                    "kind": "recent_notice",
+                    "title": "Recent notification",
+                    "body": "Should stay after login.",
+                    "link": "/activity",
+                    "created_at": recent_created_at,
+                    "read_at": None,
+                },
+            ]
+        )
+
+        login_response = self.client.post(
+            "/api/auth/login",
+            json={"email": "student@example.com", "password": "Student123!"},
+        )
+        self.assertEqual(login_response.status_code, 200)
+
+        notifications_response = self.client.get("/api/me/notifications")
+        self.assertEqual(notifications_response.status_code, 200)
+        kinds = [item["kind"] for item in notifications_response.json()["items"]]
+        self.assertIn("recent_notice", kinds)
+        self.assertNotIn("old_notice", kinds)
+
+    def test_notifications_api_returns_admin_review_and_read_flow(self) -> None:
+        self.login("student@example.com", "Student123!")
+        create_response = self.client.post(
+            "/api/me/owned-events",
+            json={
+                "title": "API Notification Demo",
+                "description": "Event request used to verify notification APIs.",
+                "category": "Community",
+                "location": "Notice Hall",
+                "start_at": "2026-06-20T18:00:00",
+                "capacity": 24,
+                "price": 6,
+            },
+        )
+        self.assertEqual(create_response.status_code, 201)
+
+        notifications_response = self.client.get("/api/me/notifications")
+        self.assertEqual(notifications_response.status_code, 200)
+        self.assertGreaterEqual(notifications_response.json()["unread_count"], 1)
+        self.assertTrue(any(item["kind"] == "request_sent" for item in notifications_response.json()["items"]))
+
+        update_response = self.client.put(
+            f"/api/me/owned-events/{create_response.json()['id']}",
+            json={
+                "title": "API Notification Demo Revised",
+                "description": "Updated request used to verify resubmission notifications.",
+                "category": "Community",
+                "location": "Notice Hall Revised",
+                "start_at": "2026-06-21T18:00:00",
+                "capacity": 28,
+                "price": 7,
+            },
+        )
+        self.assertEqual(update_response.status_code, 200)
+
+        notifications_after_update = self.client.get("/api/me/notifications")
+        self.assertEqual(notifications_after_update.status_code, 200)
+        self.assertTrue(any(item["kind"] == "request_resubmitted" for item in notifications_after_update.json()["items"]))
+
+        mark_read_response = self.client.post("/api/me/notifications/read-all")
+        self.assertEqual(mark_read_response.status_code, 200)
+
+        notifications_after_read = self.client.get("/api/me/notifications")
+        self.assertEqual(notifications_after_read.status_code, 200)
+        self.assertEqual(notifications_after_read.json()["unread_count"], 0)
+
+        self.client.post("/api/auth/logout")
+        self.login("admin@example.com", "Admin123!")
+        admin_notifications = self.client.get("/api/me/notifications")
+        self.assertEqual(admin_notifications.status_code, 200)
+        self.assertTrue(any(item["kind"] == "request_review" for item in admin_notifications.json()["items"]))
+
 
 if __name__ == "__main__":
     unittest.main()
+

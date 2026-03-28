@@ -446,6 +446,7 @@ async function ensureLocationPickerModal() {
       longitudeInput.dispatchEvent(new Event("input", { bubbles: true }));
     }
 
+    locationPickerState.activeTarget.input.dataset.locationValidated = "true";
     close();
   };
 
@@ -523,6 +524,24 @@ export function attachLocationPicker({
   if (button.dataset.locationPickerBound === "true") {
     return;
   }
+
+  const clearPickedCoordinates = () => {
+    if (latitudeInput instanceof HTMLInputElement) {
+      latitudeInput.value = "";
+    }
+    if (longitudeInput instanceof HTMLInputElement) {
+      longitudeInput.value = "";
+    }
+    if (mapUrlInput instanceof HTMLInputElement) {
+      mapUrlInput.value = "";
+    }
+    input.dataset.locationValidated = "false";
+  };
+
+  input.addEventListener("input", () => {
+    input.dataset.locationValidated = "false";
+    clearPickedCoordinates();
+  });
 
   button.addEventListener("click", async () => {
     try {
@@ -636,7 +655,163 @@ export function renderUserAvatar(target, user, imageClass = "avatar-image-fill")
   target.appendChild(avatarImage);
 }
 
+function ensureNotificationBell() {
+  const topbarActions = document.querySelector(".topbar-actions");
+  if (!(topbarActions instanceof HTMLElement)) {
+    return null;
+  }
+
+  let anchor = topbarActions.querySelector(".notification-anchor");
+  if (!(anchor instanceof HTMLElement)) {
+    anchor = document.createElement("div");
+    anchor.className = "notification-anchor";
+    anchor.innerHTML = `
+      <button class="notification-trigger" data-testid="notification-trigger" type="button" aria-label="Notifications">
+        <svg class="notification-bell-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M12 3a4 4 0 0 0-4 4v1.06c0 .64-.2 1.27-.57 1.8L6 12.5V14h12v-1.5l-1.43-2.64a3.64 3.64 0 0 1-.57-1.8V7a4 4 0 0 0-4-4Zm0 18a2.77 2.77 0 0 0 2.45-1.5h-4.9A2.77 2.77 0 0 0 12 21Z" fill="currentColor" />
+        </svg>
+        <span class="notification-badge hidden" data-testid="notification-badge">0</span>
+      </button>
+      <div class="notification-menu hidden" data-testid="notification-menu">
+        <div class="notification-menu-head">
+          <strong>Notifications</strong>
+          <span class="subtle">Latest updates</span>
+        </div>
+        <div class="notification-list" data-testid="notification-list">
+          <p class="subtle notification-empty">No notifications yet.</p>
+        </div>
+      </div>
+    `;
+    const accountAnchor = topbarActions.querySelector(".account-anchor");
+    topbarActions.insertBefore(anchor, accountAnchor || null);
+  }
+
+  const trigger = anchor.querySelector("[data-testid='notification-trigger']");
+  const badge = anchor.querySelector("[data-testid='notification-badge']");
+  const menu = anchor.querySelector("[data-testid='notification-menu']");
+  const list = anchor.querySelector("[data-testid='notification-list']");
+  if (!(trigger instanceof HTMLButtonElement) || !(badge instanceof HTMLElement) || !(menu instanceof HTMLElement) || !(list instanceof HTMLElement)) {
+    return null;
+  }
+
+  return { anchor, trigger, badge, menu, list };
+}
+
+function renderNotificationItems(target, items) {
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+
+  if (!Array.isArray(items) || !items.length) {
+    target.innerHTML = '<p class="subtle notification-empty">No notifications yet.</p>';
+    return;
+  }
+
+  target.innerHTML = items
+    .map(
+      (item) => `
+        <a class="notification-item ${item.is_read ? "" : "is-unread"}" href="${escapeHtml(item.link || "/activity")}">
+          <div class="notification-item-copy">
+            <strong>${escapeHtml(item.title || "Notification")}</strong>
+            <p>${escapeHtml(item.body || "")}</p>
+          </div>
+          <div class="notification-item-foot">
+            <time class="notification-item-time">${escapeHtml(formatDateTime(item.created_at || ""))}</time>
+            ${item.action_label ? `<span class="notification-item-action">${escapeHtml(item.action_label)}</span>` : ""}
+          </div>
+        </a>
+      `
+    )
+    .join("");
+}
+
+function updateNotificationBadge(badge, unreadCount) {
+  if (!(badge instanceof HTMLElement)) {
+    return;
+  }
+  const count = Math.max(Number(unreadCount || 0), 0);
+  badge.textContent = count > 99 ? "99+" : String(count);
+  badge.classList.toggle("hidden", count === 0);
+}
+
+function markRenderedNotificationsRead(list) {
+  if (!(list instanceof HTMLElement)) {
+    return;
+  }
+  list.querySelectorAll(".notification-item.is-unread").forEach((item) => item.classList.remove("is-unread"));
+}
+
+async function refreshNotificationMenu(shell) {
+  if (!shell) {
+    return { unread_count: 0, items: [] };
+  }
+  const payload = await api("/api/me/notifications");
+  renderNotificationItems(shell.list, payload.items || []);
+  updateNotificationBadge(shell.badge, payload.unread_count || 0);
+  shell.trigger.dataset.unreadCount = String(payload.unread_count || 0);
+  return payload;
+}
+
+export function requestNotificationRefresh() {
+  window.dispatchEvent(new CustomEvent("eventhub:notifications-refresh"));
+}
+
+function setupNotificationMenu() {
+  const shell = ensureNotificationBell();
+  if (!shell) {
+    return null;
+  }
+
+  if (shell.trigger.dataset.notificationMenuBound !== "true") {
+    shell.trigger.addEventListener("click", async () => {
+      const accountMenu = document.querySelector("[data-testid='account-menu']");
+      accountMenu?.classList.add("hidden");
+
+      const willOpen = shell.menu.classList.contains("hidden");
+      shell.menu.classList.toggle("hidden");
+      if (!willOpen) {
+        return;
+      }
+
+      try {
+        const payload = await refreshNotificationMenu(shell);
+        if (Number(payload.unread_count || 0) > 0) {
+          await api("/api/me/notifications/read-all", { method: "POST" });
+          updateNotificationBadge(shell.badge, 0);
+          shell.trigger.dataset.unreadCount = "0";
+          markRenderedNotificationsRead(shell.list);
+        }
+      } catch (error) {
+        shell.list.innerHTML = `<p class="subtle notification-empty">${escapeHtml(error.message || "Could not load notifications right now.")}</p>`;
+      }
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!(event.target instanceof Node)) {
+        return;
+      }
+      if (!shell.menu.contains(event.target) && !shell.trigger.contains(event.target)) {
+        shell.menu.classList.add("hidden");
+      }
+    });
+
+    window.addEventListener("eventhub:notifications-refresh", () => {
+      void refreshNotificationMenu(shell).catch(() => {
+        updateNotificationBadge(shell.badge, 0);
+      });
+    });
+
+    shell.trigger.dataset.notificationMenuBound = "true";
+  }
+
+  void refreshNotificationMenu(shell).catch(() => {
+    updateNotificationBadge(shell.badge, 0);
+  });
+  return shell;
+}
+
 export function setupAccountMenu(user) {
+  const notificationShell = setupNotificationMenu();
   const trigger = document.querySelector("[data-testid='account-trigger']");
   const menu = document.querySelector("[data-testid='account-menu']");
   const avatar = document.querySelector("[data-testid='account-avatar']");
@@ -647,7 +822,7 @@ export function setupAccountMenu(user) {
   const accountSecurityLink = document.querySelector("[data-testid='account-security-link']");
   const logout = document.querySelector("[data-testid='account-logout']");
 
-  if (!trigger || !menu || !avatar || !name || !email || !accountDetailLink || !accountBillingLink || !accountSecurityLink || !logout) {
+  if (!trigger || !menu || !avatar || !name || !email || !accountDetailLink || !logout) {
     return;
   }
 
@@ -655,14 +830,19 @@ export function setupAccountMenu(user) {
   name.textContent = user.name;
   email.textContent = user.email;
   accountDetailLink.href = "/account";
-  accountBillingLink.href = "/account/billing";
-  accountSecurityLink.href = "/account/security";
+  if (accountBillingLink instanceof HTMLAnchorElement) {
+    accountBillingLink.href = "/account/billing";
+  }
+  if (accountSecurityLink instanceof HTMLAnchorElement) {
+    accountSecurityLink.href = "/account/security";
+  }
 
   if (trigger.dataset.accountMenuBound === "true") {
     return;
   }
 
   trigger.addEventListener("click", () => {
+    notificationShell?.menu.classList.add("hidden");
     menu.classList.toggle("hidden");
   });
 

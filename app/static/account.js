@@ -10,7 +10,7 @@ import {
   setupGlobalFooter,
   setupAccountMenu,
   showToast,
-} from "/static/shared.js?v=20260317-global-footer-routes";
+} from "/static/shared.js?v=20260328-notification-reminder-cta";
 import {
   DEFAULT_COUNTRY,
   DEFAULT_DISTRICT,
@@ -823,3 +823,4 @@ async function boot() {
 }
 
 boot();
+

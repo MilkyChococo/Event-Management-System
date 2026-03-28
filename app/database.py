@@ -45,9 +45,14 @@ class Database:
         self.wallet_transactions.create_index([("event_id", ASCENDING), ("created_at", ASCENDING)])
         self.wallet_topup_requests.create_index([("id", ASCENDING)], unique=True)
         self.wallet_topup_requests.create_index([("user_id", ASCENDING), ("status", ASCENDING), ("created_at", ASCENDING)])
+        self.notifications.create_index([("id", ASCENDING)], unique=True)
+        self.notifications.create_index([("user_id", ASCENDING), ("created_at", ASCENDING)])
+        self.notifications.create_index([("user_id", ASCENDING), ("read_at", ASCENDING), ("created_at", ASCENDING)])
+        self.notifications.create_index([("user_id", ASCENDING), ("dedupe_key", ASCENDING)])
         self._sync_counter("users", self.users)
         self._sync_counter("events", self.events)
         self._sync_counter("wallet_topup_requests", self.wallet_topup_requests)
+        self._sync_counter("notifications", self.notifications)
 
     def _sync_counter(self, sequence_name: str, collection: Any) -> None:
         highest = collection.find_one({}, projection={"_id": 0, "id": 1}, sort=[("id", -1)])
@@ -103,6 +108,10 @@ class Database:
     @property
     def wallet_topup_requests(self) -> Any:
         return self.connect()["wallet_topup_requests"]
+
+    @property
+    def notifications(self) -> Any:
+        return self.connect()["notifications"]
 
     @property
     def counters(self) -> Any:

@@ -12,7 +12,7 @@ import {
   setupAccountMenu,
   showToast,
   toDatetimeLocal,
-} from "/static/shared.js?v=20260328-location-coordinates";
+} from "/static/shared.js?v=20260328-notification-reminder-cta";
 
 const eventGrid = document.querySelector("[data-testid='event-grid']");
 const refreshButton = document.querySelector("#refresh-events");
@@ -175,6 +175,19 @@ function parseTicketTypes(value, fallbackPrice = 0) {
 
 function fromDatetimeLocalOptional(value) {
   return value ? fromDatetimeLocal(value) : "";
+}
+
+function hasValidatedMapLocation(input, latitudeInput, longitudeInput) {
+  const locationValue = input?.value.trim() || "";
+  const latitudeValue = latitudeInput?.value.trim() || "";
+  const longitudeValue = longitudeInput?.value.trim() || "";
+  if (!locationValue) {
+    return false;
+  }
+  if (input?.dataset.locationValidated === "true") {
+    return latitudeValue !== "" && longitudeValue !== "";
+  }
+  return false;
 }
 
 function formatPercent(value) {
@@ -1035,6 +1048,7 @@ function fillAdminForm(event) {
   document.querySelector("#admin-event-id").value = event.id;
   document.querySelector("#admin-title").value = event.title;
   document.querySelector("#admin-location").value = event.location;
+  document.querySelector("#admin-location").dataset.locationValidated = event.latitude != null && event.longitude != null ? "true" : "false";
   document.querySelector("#admin-latitude").value = event.latitude ?? "";
   document.querySelector("#admin-longitude").value = event.longitude ?? "";
   document.querySelector("#admin-description").value = event.description;
@@ -1073,6 +1087,7 @@ function resetAdminForm() {
   document.querySelector("#admin-speaker-lineup").value = "";
   document.querySelector("#admin-ticket-types").value = "";
   document.querySelector("#admin-map-url").value = "";
+  document.querySelector("#admin-location").dataset.locationValidated = "false";
   document.querySelector("#admin-latitude").value = "";
   document.querySelector("#admin-longitude").value = "";
   document.querySelector("#admin-contact-email").value = "";
@@ -1348,9 +1363,17 @@ async function handleAdminSubmit(event) {
   event.preventDefault();
   const eventId = document.querySelector("#admin-event-id").value;
   const price = Number(document.querySelector("#admin-price").value);
-  const locationValue = document.querySelector("#admin-location").value.trim();
-  const latitudeValue = document.querySelector("#admin-latitude").value.trim();
-  const longitudeValue = document.querySelector("#admin-longitude").value.trim();
+  const locationInput = document.querySelector("#admin-location");
+  const latitudeInput = document.querySelector("#admin-latitude");
+  const longitudeInput = document.querySelector("#admin-longitude");
+  if (!hasValidatedMapLocation(locationInput, latitudeInput, longitudeInput)) {
+    showToast("Choose a valid signature location from the map before saving this event.", "error");
+    locationInput?.focus();
+    return;
+  }
+  const locationValue = locationInput.value.trim();
+  const latitudeValue = latitudeInput.value.trim();
+  const longitudeValue = longitudeInput.value.trim();
   const latitude = latitudeValue ? Number(latitudeValue) : null;
   const longitude = longitudeValue ? Number(longitudeValue) : null;
   const payload = {
@@ -1741,6 +1764,7 @@ async function boot() {
 }
 
 boot();
+
 
 
 

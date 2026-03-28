@@ -9,7 +9,7 @@ import {
   setupAccountMenu,
   setupGlobalFooter,
   showToast,
-} from "/static/shared.js?v=20260324-account-menu-pages";
+} from "/static/shared.js?v=20260328-notification-reminder-cta";
 
 const profileAvatar = document.querySelector("[data-testid='profile-avatar']");
 const profileRole = document.querySelector("#profile-role");
@@ -57,7 +57,7 @@ function populateHero(user) {
     profileRole.textContent = user.role;
   }
   if (billingHeroCopy) {
-    billingHeroCopy.textContent = `${user.name} · ${user.email}`;
+    billingHeroCopy.textContent = `${user.name}  ${user.email}`;
   }
   setupAccountMenu(user);
   setupGlobalFooter(user);
@@ -313,7 +313,7 @@ function renderBillingExport() {
     </article>
     <article class="profile-field">
       <span>Peak period</span>
-      <strong>${escapeHtml(hasSpending ? `${peakBucket.label} · ${formatCurrency(peakBucket.total)}` : "No spend yet")}</strong>
+      <strong>${escapeHtml(hasSpending ? `${peakBucket.label}  ${formatCurrency(peakBucket.total)}` : "No spend yet")}</strong>
     </article>
   `;
 
@@ -536,6 +536,7 @@ async function boot() {
 }
 
 boot();
+
 
 
 

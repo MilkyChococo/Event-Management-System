@@ -1,4 +1,4 @@
-﻿import {
+import {
   api,
   getCurrentUser,
   redirectTo,
@@ -6,7 +6,7 @@
   setupAccountMenu,
   setupGlobalFooter,
   showToast,
-} from "/static/shared.js?v=20260324-account-menu-pages";
+} from "/static/shared.js?v=20260328-notification-reminder-cta";
 
 const profileAvatar = document.querySelector("[data-testid='profile-avatar']");
 const profileRole = document.querySelector("#profile-role");
@@ -23,7 +23,7 @@ function populateHero(user) {
     profileRole.textContent = user.role;
   }
   if (securityHeroCopy) {
-    securityHeroCopy.textContent = `${user.name} · ${user.email}`;
+    securityHeroCopy.textContent = `${user.name} � ${user.email}`;
   }
   setupAccountMenu(user);
   setupGlobalFooter(user);
@@ -66,3 +66,4 @@ async function boot() {
 }
 
 boot();
+

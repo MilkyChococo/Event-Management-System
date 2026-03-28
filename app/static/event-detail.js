@@ -11,7 +11,7 @@ import {
   setupAccountMenu,
   showNotice,
   showToast,
-} from "/static/shared.js?v=20260328-location-coordinates";
+} from "/static/shared.js?v=20260328-notification-reminder-cta";
 
 const messageBox = document.querySelector("[data-testid='detail-message']");
 const detailTitle = document.querySelector("[data-testid='detail-title']");
@@ -525,6 +525,7 @@ async function boot() {
 }
 
 boot();
+
 
 
 

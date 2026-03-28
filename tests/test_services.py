@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from app.config import Settings
 from app.database import Database
@@ -387,6 +388,114 @@ class EventRegistrationServiceTests(unittest.TestCase):
         self.assertIn("San Francisco County", updated["permanent_address"])
         self.assertIn("United States", updated["permanent_address"])
 
+    def test_notifications_cover_request_lifecycle_and_admin_review(self) -> None:
+        created = self.service.create_owned_event(
+            self.student["id"],
+            {
+                "title": "Notification Student Demo",
+                "description": "Student request used to verify notification routing.",
+                "category": "Community",
+                "location": "Signal Hall",
+                "start_at": "2026-06-15T18:00:00",
+                "capacity": 20,
+                "price": 8,
+            },
+        )
+
+        student_notifications = self.service.list_notifications(self.student["id"])
+        self.assertTrue(any(item["kind"] == "request_sent" for item in student_notifications["items"]))
+
+        admin_notifications = self.service.list_notifications(self.admin["id"])
+        self.assertTrue(any(item["kind"] == "request_review" for item in admin_notifications["items"]))
+
+        self.service.update_owned_event(
+            self.student["id"],
+            created["id"],
+            {
+                "title": "Notification Student Demo Revised",
+                "description": "Updated request body used to verify resubmission notifications.",
+                "category": "Community",
+                "location": "Signal Hall Updated",
+                "start_at": "2026-06-16T18:00:00",
+                "capacity": 22,
+                "price": 9,
+            },
+        )
+        student_notifications_after_resubmit = self.service.list_notifications(self.student["id"])
+        self.assertTrue(
+            any(item["kind"] == "request_resubmitted" for item in student_notifications_after_resubmit["items"])
+        )
+
+        admin_notifications_after_resubmit = self.service.list_notifications(self.admin["id"])
+        self.assertTrue(
+            any(item["title"] == "Updated event request" for item in admin_notifications_after_resubmit["items"])
+        )
+
+        self.service.approve_event_request(created["id"])
+        student_notifications_after_approval = self.service.list_notifications(self.student["id"])
+        self.assertTrue(any(item["kind"] == "request_approved" for item in student_notifications_after_approval["items"]))
+
+        self.service.delete_owned_event(self.student["id"], created["id"])
+        student_notifications_after_delete = self.service.list_notifications(self.student["id"])
+        self.assertTrue(any(item["kind"] == "request_deleted" for item in student_notifications_after_delete["items"]))
+
+    def test_login_purges_notifications_older_than_five_days(self) -> None:
+        old_created_at = (datetime.now(timezone.utc) - timedelta(days=6)).replace(microsecond=0).isoformat()
+        recent_created_at = (datetime.now(timezone.utc) - timedelta(days=2)).replace(microsecond=0).isoformat()
+        self.db.notifications.insert_many(
+            [
+                {
+                    "id": self.db.next_sequence("notifications"),
+                    "user_id": self.student["id"],
+                    "kind": "legacy_notice",
+                    "title": "Old notification",
+                    "body": "This one should be removed on login.",
+                    "link": "/activity",
+                    "created_at": old_created_at,
+                    "read_at": None,
+                },
+                {
+                    "id": self.db.next_sequence("notifications"),
+                    "user_id": self.student["id"],
+                    "kind": "recent_notice",
+                    "title": "Recent notification",
+                    "body": "This one should stay.",
+                    "link": "/activity",
+                    "created_at": recent_created_at,
+                    "read_at": None,
+                },
+            ]
+        )
+
+        self.service.authenticate("student@example.com", "Student123!")
+        remaining = list(self.db.notifications.find({"user_id": self.student["id"]}))
+        self.assertEqual(len(remaining), 1)
+        self.assertEqual(remaining[0]["kind"], "recent_notice")
+
+    def test_upcoming_event_reminder_notification_is_created_once(self) -> None:
+        soon_start = (datetime.now(timezone.utc) + timedelta(hours=10)).replace(microsecond=0).isoformat()
+        event = self.service.create_event(
+            self.admin["id"],
+            {
+                "title": "Reminder Window Event",
+                "description": "Event scheduled inside the next 24 hours to verify reminders.",
+                "location": "Reminder Hall",
+                "start_at": soon_start,
+                "capacity": 12,
+                "price": 5,
+            },
+        )
+
+        self.service.register_for_event(self.student["id"], event["id"], {"quantity": 1})
+        first_notifications = self.service.list_notifications(self.student["id"])
+        second_notifications = self.service.list_notifications(self.student["id"])
+
+        reminder_items = [item for item in second_notifications["items"] if item["kind"] == "event_reminder" and str(event["id"]) in item["link"]]
+        self.assertEqual(len(reminder_items), 1)
+        self.assertEqual(reminder_items[0]["action_label"], "View now")
+        self.assertTrue(any(item["kind"] == "event_reminder" for item in first_notifications["items"]))
+
 
 if __name__ == "__main__":
     unittest.main()
+

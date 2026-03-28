@@ -205,7 +205,7 @@ class EventInput(BaseModel):
     description: str = Field(min_length=10, max_length=1000)
     category: str = Field(default="General", min_length=2, max_length=80)
     event_format: str = Field(default="Offline", min_length=2, max_length=40)
-    location: str = Field(min_length=3, max_length=120)
+    location: str = Field(min_length=1, max_length=255)
     venue_details: str = Field(default="", max_length=400)
     start_at: str = Field(min_length=10, max_length=40)
     registration_deadline: str = Field(default="", max_length=40)
@@ -288,7 +288,7 @@ class OwnedEventCreateInput(BaseModel):
     title: str = Field(min_length=3, max_length=120)
     description: str = Field(min_length=10, max_length=1000)
     category: str = Field(default="Community", min_length=2, max_length=80)
-    location: str = Field(min_length=3, max_length=120)
+    location: str = Field(min_length=1, max_length=255)
     venue_details: str = Field(default="", max_length=400)
     start_at: str = Field(min_length=10, max_length=40)
     capacity: int = Field(ge=1, le=5000)
@@ -389,6 +389,21 @@ class UserTicketOutput(BaseModel):
     registered_at: str
     cancelled_at: str | None = None
     qr_payload: str
+
+class NotificationOutput(BaseModel):
+    id: int
+    kind: str
+    title: str
+    body: str
+    link: str
+    action_label: str | None = None
+    is_read: bool
+    created_at: str
+
+
+class NotificationListOutput(BaseModel):
+    unread_count: int
+    items: list[NotificationOutput]
 
 class WalletTopUpInput(BaseModel):
     amount: float = Field(gt=0, le=1_000_000_000)

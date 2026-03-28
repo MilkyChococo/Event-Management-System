@@ -11,6 +11,11 @@
   --shadow: 0 20px 50px rgba(30, 41, 52, 0.12);
 }
 
+html {
+  overflow-y: scroll;
+  scrollbar-gutter: stable both-edges;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -644,6 +649,145 @@ select:focus {
 
 .account-anchor {
   position: relative;
+}
+
+.notification-anchor {
+  position: relative;
+}
+
+.notification-trigger {
+  position: relative;
+  width: 3rem;
+  height: 3rem;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 252, 246, 0.96);
+  border: 1px solid rgba(103, 90, 66, 0.14);
+  color: var(--teal-dark);
+  box-shadow: 0 10px 24px rgba(14, 25, 35, 0.08);
+}
+
+.notification-trigger:hover {
+  background: rgba(248, 244, 236, 0.98);
+}
+
+.notification-bell-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.notification-badge {
+  position: absolute;
+  top: -0.15rem;
+  right: -0.1rem;
+  min-width: 1.2rem;
+  height: 1.2rem;
+  padding: 0 0.28rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #c9394b;
+  color: white;
+  font-size: 0.72rem;
+  font-weight: 700;
+  box-shadow: 0 8px 18px rgba(201, 57, 75, 0.26);
+}
+
+.notification-menu {
+  position: absolute;
+  top: calc(100% + 0.7rem);
+  right: 0;
+  width: min(24rem, calc(100vw - 2rem));
+  padding: 1rem;
+  border-radius: 1.2rem;
+  background: rgba(255, 252, 246, 0.98);
+  border: 1px solid rgba(103, 90, 66, 0.16);
+  box-shadow: 0 18px 35px rgba(30, 41, 52, 0.16);
+  z-index: 42;
+}
+
+.notification-menu-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.8rem;
+}
+
+.notification-list {
+  display: grid;
+  gap: 0.65rem;
+  max-height: 19rem;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+}
+
+.notification-item {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.8rem 0.9rem;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(103, 90, 66, 0.1);
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+
+.notification-item:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(14, 109, 104, 0.18);
+}
+
+.notification-item.is-unread {
+  background: rgba(14, 109, 104, 0.08);
+  border-color: rgba(14, 109, 104, 0.18);
+}
+
+.notification-item-copy {
+  display: grid;
+  gap: 0.22rem;
+}
+
+.notification-item-copy p,
+.notification-item-time,
+.notification-empty {
+  margin: 0;
+}
+
+.notification-item-copy p {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.notification-item-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.notification-item-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.85rem;
+  padding: 0.2rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(14, 109, 104, 0.12);
+  border: 1px solid rgba(14, 109, 104, 0.18);
+  color: #0e6d68;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.notification-item-time {
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .account-trigger {
@@ -1293,7 +1437,7 @@ select:focus {
   min-height: 18rem;
   max-height: 18rem;
   overflow-y: auto;
-  padding: 0.2rem;
+  padding: 0.28rem 0.42rem 0.28rem 0.28rem;
   border-radius: 1.5rem;
   background: rgba(255, 255, 255, 0.34);
   border: 1px solid rgba(103, 90, 66, 0.1);
@@ -3640,28 +3784,51 @@ select:focus {
   gap: 1rem;
   max-height: 26rem;
   overflow-y: auto;
-  padding-right: 0.35rem;
+  padding-right: 0.2rem;
   align-content: start;
-  scrollbar-width: thin;
-}
-
-.billing-transaction-list::-webkit-scrollbar {
-  width: 0.6rem;
-}
-
-.billing-transaction-list::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: rgba(14, 109, 104, 0.24);
-}
-
-.billing-transaction-list::-webkit-scrollbar-track {
-  background: rgba(17, 57, 70, 0.06);
-  border-radius: 999px;
 }
 
 .billing-transaction-list .wallet-transaction-item {
   padding: 1rem 1.2rem;
   border-radius: 1.2rem;
+}
+
+.event-match-list,
+.billing-transaction-list,
+.admin-modal-dialog {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(14, 109, 104, 0.42) transparent;
+}
+
+.event-match-list::-webkit-scrollbar,
+.billing-transaction-list::-webkit-scrollbar,
+.admin-modal-dialog::-webkit-scrollbar {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.event-match-list::-webkit-scrollbar-track,
+.billing-transaction-list::-webkit-scrollbar-track,
+.admin-modal-dialog::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 0.45rem 0.2rem;
+}
+
+.event-match-list::-webkit-scrollbar-thumb,
+.billing-transaction-list::-webkit-scrollbar-thumb,
+.admin-modal-dialog::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  background-image: linear-gradient(180deg, rgba(14, 109, 104, 0.54), rgba(193, 141, 47, 0.48));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+}
+
+.event-match-list::-webkit-scrollbar-thumb:hover,
+.billing-transaction-list::-webkit-scrollbar-thumb:hover,
+.admin-modal-dialog::-webkit-scrollbar-thumb:hover {
+  background-image: linear-gradient(180deg, rgba(14, 109, 104, 0.72), rgba(193, 141, 47, 0.62));
 }
 
 .wallet-summary-grid,
@@ -3696,6 +3863,14 @@ select:focus {
 .wallet-panel-grid,
 .owned-events-layout {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.activity-studio-head {
+  align-items: center;
+}
+
+.activity-request-modal-dialog {
+  width: min(1080px, 100%);
 }
 
 .compact-heading {
@@ -3999,11 +4174,36 @@ select:focus {
 }
 
 .activity-registration-meta {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .activity-registration-actions {
   justify-content: flex-end;
+}
+
+.activity-countdown-card {
+  display: grid;
+  gap: 0.22rem;
+  align-content: start;
+}
+
+.activity-countdown-card dt {
+  margin: 0;
+}
+
+.activity-countdown-card dd {
+  font-size: 1rem;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+
+.activity-countdown-card.is-urgent {
+  background: rgba(198, 75, 86, 0.08);
+  border-color: rgba(198, 75, 86, 0.2);
+}
+
+.activity-countdown-card.is-urgent dd {
+  color: #8a2240;
 }
 
 .activity-form-actions {
@@ -4033,9 +4233,37 @@ select:focus {
   }
 }
 
+.activity-page-shell .billing-accordion {
+  gap: 0.4rem;
+}
+
+.activity-page-shell .billing-accordion-item {
+  position: relative;
+  gap: 0.32rem;
+}
+
+.activity-page-shell .billing-sidebar-item {
+  position: relative;
+  overflow: visible;
+  padding: 0.8rem 1.05rem;
+}
+
+.activity-page-shell .billing-accordion-item + .billing-accordion-item > .billing-sidebar-item::before {
+  content: "";
+  position: absolute;
+  left: 1.45rem;
+  right: 1.45rem;
+  top: calc(-0.2rem - 1px);
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(103, 90, 66, 0.22), transparent);
+  pointer-events: none;
+  z-index: 3;
+}
+
 .activity-page-shell .billing-panel {
   display: grid;
   gap: 1rem;
+  margin-top: 0;
 }
 
 .activity-owned-layout {
@@ -4062,11 +4290,36 @@ select:focus {
 }
 
 .activity-registration-meta {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .activity-registration-actions {
   justify-content: flex-end;
+}
+
+.activity-countdown-card {
+  display: grid;
+  gap: 0.22rem;
+  align-content: start;
+}
+
+.activity-countdown-card dt {
+  margin: 0;
+}
+
+.activity-countdown-card dd {
+  font-size: 1rem;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+
+.activity-countdown-card.is-urgent {
+  background: rgba(198, 75, 86, 0.08);
+  border-color: rgba(198, 75, 86, 0.2);
+}
+
+.activity-countdown-card.is-urgent dd {
+  color: #8a2240;
 }
 
 @media (max-width: 1080px) {
@@ -4105,6 +4358,28 @@ select:focus {
   line-height: 1.55;
 }
 
+.activity-delete-modal-dialog {
+  width: min(32rem, calc(100vw - 2rem));
+}
+
+.activity-delete-copy {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.activity-delete-actions {
+  justify-content: flex-end;
+}
+
+.activity-delete-confirm-button {
+  background: linear-gradient(135deg, #b53b57, #8a2240);
+  box-shadow: 0 12px 24px rgba(181, 59, 87, 0.24);
+}
+
+.activity-delete-confirm-button:hover {
+  background: linear-gradient(135deg, #c44966, #962744);
+}
+
 .activity-request-item {
   align-items: flex-start;
 }
@@ -4139,6 +4414,10 @@ select:focus {
 .location-picker-icon {
   width: 1.1rem;
   height: 1.1rem;
+}
+
+#location-picker-modal {
+  z-index: 120;
 }
 
 .location-picker-dialog {
