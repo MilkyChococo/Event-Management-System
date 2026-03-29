@@ -20,6 +20,18 @@ async function fillAdminEventForm(page, { title, description, location, startAt,
   await page.locator("#admin-description").fill(description);
   await page.locator("#admin-category").fill(category);
   await page.locator("#admin-location").fill(location);
+  await page.evaluate(({ locationValue }) => {
+    const locationInput = document.querySelector("#admin-location");
+    const latitudeInput = document.querySelector("#admin-latitude");
+    const longitudeInput = document.querySelector("#admin-longitude");
+    if (!(locationInput instanceof HTMLInputElement) || !(latitudeInput instanceof HTMLInputElement) || !(longitudeInput instanceof HTMLInputElement)) {
+      throw new Error("Admin location inputs are missing.");
+    }
+    locationInput.value = locationValue;
+    locationInput.dataset.locationValidated = "true";
+    latitudeInput.value = "10.776889";
+    longitudeInput.value = "106.700806";
+  }, { locationValue: location });
   await page.locator("#admin-start-at").fill(startAt);
   await page.locator("#admin-capacity").fill(String(capacity));
   await page.locator("#admin-price").fill(String(price));
