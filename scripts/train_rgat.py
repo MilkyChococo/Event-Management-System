@@ -13,6 +13,7 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
+from torch.cuda.amp import autocast, GradScaler
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -28,8 +29,7 @@ EPOCHS      = 10
 LR          = 1e-3
 TRAIN_RATIO = 0.8
 RANDOM_SEED = 42
-BATCH_SIZE  = 4          
-GRAD_ACCUM  = 4        
+BATCH_SIZE  = 2        
 STORE_ROOT  = PROJECT_ROOT / "artifacts" / "node_stores"
 SAVE_DIR    = PROJECT_ROOT / "artifacts" / "models"
 SAVE_DIR.mkdir(parents=True, exist_ok=True)
@@ -37,7 +37,6 @@ SAVE_DIR.mkdir(parents=True, exist_ok=True)
 EVAL_SPLIT_FILE = PROJECT_ROOT / "artifacts" / "rgat_eval_doc_ids.json"
 
 print(f"Device: {DEVICE}")
-print(f"Batch size: {BATCH_SIZE} | Grad accum steps: {GRAD_ACCUM}")
 
 
 # ── Load stores ───────────────────────────────────────────────────────────────
@@ -67,10 +66,6 @@ def build_labels(nodes: list[dict]) -> torch.Tensor:
         has_text  = bool(str(node.get("text", "") or "").strip())
         labels.append(1 if (has_embed and has_text) else 0)
     return torch.tensor(labels, dtype=torch.long)
-
-
-def make_batches(stores: list[dict], batch_size: int) -> list[list[dict]]:
-    return [stores[i:i + batch_size] for i in range(0, len(stores), batch_size)]
 
 
 # ── Split ─────────────────────────────────────────────────────────────────────
@@ -106,8 +101,8 @@ print(f"Eval split saved: {EVAL_SPLIT_FILE}")
 
 model = RGATWithClassifier(
     in_channels=768,
-    hidden_channels=256,
-    out_channels=128,
+    hidden_channels=128,   # giảm để nhẹ hơn
+    out_channels=64,       # giảm để nhẹ hơn
     num_relations=4,
     num_classes=2,
 ).to(DEVICE)
@@ -115,6 +110,8 @@ model = RGATWithClassifier(
 optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
 criterion = nn.CrossEntropyLoss(weight=torch.tensor([0.3, 0.7]).to(DEVICE))
+
+scaler = GradScaler()
 
 
 # ── Training loop ─────────────────────────────────────────────────────────────
@@ -128,63 +125,47 @@ for epoch in range(1, EPOCHS + 1):
     model.train()
     t_loss, t_correct, t_nodes, skipped = 0.0, 0, 0, 0
 
-    train_batches = make_batches(train_stores, BATCH_SIZE)
-    optimizer.zero_grad()
+    for store in train_stores:
+        try:
+            x, edge_index, edge_type = _build_rgat_inputs(
+                store["nodes"], store["edges"]
+            )
+            labels = build_labels(store["nodes"])
+        except Exception:
+            skipped += 1
+            continue
 
-    for batch_idx, batch in enumerate(train_batches):
-        batch_loss = torch.tensor(0.0, device=DEVICE)
-        batch_valid = 0
+        N = x.size(0)
+        if N == 0 or labels.size(0) != N:
+            skipped += 1
+            continue
 
-        for store in batch:
-            try:
-                x, edge_index, edge_type = _build_rgat_inputs(
-                    store["nodes"], store["edges"]
-                )
-                labels = build_labels(store["nodes"])
-            except Exception:
-                skipped += 1
-                continue
+        x          = x.to(DEVICE)
+        edge_index = edge_index.to(DEVICE)
+        edge_type  = edge_type.to(DEVICE)
+        labels     = labels.to(DEVICE)
 
-            N = x.size(0)
-            if N == 0 or labels.size(0) != N:
-                skipped += 1
-                continue
+        with autocast():
+            logits = model(x, edge_index, edge_type)
+            loss   = criterion(logits, labels)
 
-            x          = x.to(DEVICE)
-            edge_index = edge_index.to(DEVICE)
-            edge_type  = edge_type.to(DEVICE)
-            labels     = labels.to(DEVICE)
+        optimizer.zero_grad()
+        scaler.scale(loss).backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        scaler.step(optimizer)
+        scaler.update()
 
-            logits      = model(x, edge_index, edge_type)
-            loss        = criterion(logits, labels)
-            batch_loss  = batch_loss + loss
-            batch_valid += 1
+        t_loss    += loss.item()
+        t_correct += (logits.argmax(dim=1) == labels).sum().item()
+        t_nodes   += N
 
-            t_correct += (logits.argmax(dim=1) == labels).sum().item()
-            t_nodes   += N
-
-            # Giải phóng GPU memory sau mỗi store
-            del x, edge_index, edge_type, labels, logits
-            if DEVICE == "cuda":
-                torch.cuda.empty_cache()
-
-        if batch_valid > 0:
-            # Chia trung bình theo store trong batch, rồi chia tiếp cho GRAD_ACCUM
-            avg_loss = batch_loss / batch_valid / GRAD_ACCUM
-            avg_loss.backward()
-            t_loss += (batch_loss / batch_valid).item()
-
-        # Update weights sau mỗi GRAD_ACCUM batch (hoặc batch cuối)
-        is_last_batch = (batch_idx == len(train_batches) - 1)
-        if (batch_idx + 1) % GRAD_ACCUM == 0 or is_last_batch:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            optimizer.step()
-            optimizer.zero_grad()
+        del x, edge_index, edge_type, labels, logits
+        if DEVICE == "cuda":
+            torch.cuda.empty_cache()
 
     scheduler.step()
 
-    n_effective = max(1, len(train_batches) - skipped)
-    train_loss = t_loss / n_effective
+    train_loss = t_loss / max(1, len(train_stores) - skipped)
     train_acc  = t_correct / max(1, t_nodes)
 
     # ── Eval ─────────────────────────────────────────────────────────────────
@@ -192,34 +173,33 @@ for epoch in range(1, EPOCHS + 1):
     e_loss, e_correct, e_nodes = 0.0, 0, 0
 
     with torch.no_grad():
-        eval_batches = make_batches(eval_stores, BATCH_SIZE)
-        for batch in eval_batches:
-            for store in batch:
-                try:
-                    x, edge_index, edge_type = _build_rgat_inputs(
-                        store["nodes"], store["edges"]
-                    )
-                    labels = build_labels(store["nodes"])
-                except Exception:
-                    continue
+        for store in eval_stores:
+            try:
+                x, edge_index, edge_type = _build_rgat_inputs(
+                    store["nodes"], store["edges"]
+                )
+                labels = build_labels(store["nodes"])
+            except Exception:
+                continue
 
-                N = x.size(0)
-                if N == 0 or labels.size(0) != N:
-                    continue
+            N = x.size(0)
+            if N == 0 or labels.size(0) != N:
+                continue
 
-                x          = x.to(DEVICE)
-                edge_index = edge_index.to(DEVICE)
-                edge_type  = edge_type.to(DEVICE)
-                labels     = labels.to(DEVICE)
+            x          = x.to(DEVICE)
+            edge_index = edge_index.to(DEVICE)
+            edge_type  = edge_type.to(DEVICE)
+            labels     = labels.to(DEVICE)
 
-                logits    = model(x, edge_index, edge_type)
-                e_loss   += criterion(logits, labels).item()
+            with autocast():
+                logits   = model(x, edge_index, edge_type)
+                e_loss  += criterion(logits, labels).item()
                 e_correct += (logits.argmax(dim=1) == labels).sum().item()
                 e_nodes   += N
 
-                del x, edge_index, edge_type, labels, logits
-                if DEVICE == "cuda":
-                    torch.cuda.empty_cache()
+            del x, edge_index, edge_type, labels, logits
+            if DEVICE == "cuda":
+                torch.cuda.empty_cache()
 
     eval_loss = e_loss / max(1, len(eval_stores))
     eval_acc  = e_correct / max(1, e_nodes)
