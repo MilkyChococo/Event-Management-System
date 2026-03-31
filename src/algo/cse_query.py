@@ -12,7 +12,7 @@ from src.utils.config import DEFAULT_QWEN_EMBED_MODEL
 
 from .cse_indexing import load_embedding_store, normalized_cosine_similarity
 
-
+_EMBEDDER_CACHE: dict = {}
 @dataclass(slots=True)
 class SeedCandidate:
     node_id: str
@@ -57,16 +57,19 @@ def build_query_relevance_scores(
         "Represent the user's document question to retrieve relevant graph nodes."
     ),
 ) -> dict[str, float]:
-    embedder = Qwen3VLNodeEmbedder(
-        config=Qwen3VLEmbeddingConfig(
-            model=model,
-            device=device,
-            dtype=dtype,
-            batch_size=batch_size,
-            max_length=max_length,
-            query_instruction=query_instruction,
+    cache_key = f"{model}|{device}|{dtype}"
+    if cache_key not in _EMBEDDER_CACHE:
+        _EMBEDDER_CACHE[cache_key] = Qwen3VLNodeEmbedder(
+            config=Qwen3VLEmbeddingConfig(
+                model=model,
+                device=device,
+                dtype=dtype,
+                batch_size=batch_size,
+                max_length=max_length,
+                query_instruction=query_instruction,
+            )
         )
-    )
+    embedder = _EMBEDDER_CACHE[cache_key]
     query_embedding = embedder.embed_texts(
         texts=[query],
         instruction=query_instruction,
