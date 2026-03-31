@@ -281,8 +281,8 @@ def load_rgat_model(
 
     model = RGATWithClassifier(
         in_channels=768,
-        hidden_channels=256,
-        out_channels=128,
+        hidden_channels=64,
+        out_channels=32,
         num_relations=4,
         num_classes=2,
     ).to(device)
