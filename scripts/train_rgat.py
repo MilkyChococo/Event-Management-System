@@ -29,7 +29,7 @@ EPOCHS      = 10
 LR          = 1e-3
 TRAIN_RATIO = 0.8
 RANDOM_SEED = 42
-BATCH_SIZE  = 2        
+BATCH_SIZE  = 1 
 STORE_ROOT  = PROJECT_ROOT / "artifacts" / "node_stores"
 SAVE_DIR    = PROJECT_ROOT / "artifacts" / "models"
 SAVE_DIR.mkdir(parents=True, exist_ok=True)
@@ -101,8 +101,8 @@ print(f"Eval split saved: {EVAL_SPLIT_FILE}")
 
 model = RGATWithClassifier(
     in_channels=768,
-    hidden_channels=128,   # giảm để nhẹ hơn
-    out_channels=64,       # giảm để nhẹ hơn
+    hidden_channels=64,   # giảm để nhẹ hơn
+    out_channels=32,       # giảm để nhẹ hơn
     num_relations=4,
     num_classes=2,
 ).to(DEVICE)
