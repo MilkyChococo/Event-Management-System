@@ -1,8 +1,8 @@
 """
 scripts/train_rgat.py
 
-Train RGAT trên 80% val stores, evaluate trên 20% còn lại.
-Thêm cơ chế sampling node để tránh OOM.
+Train RGAT trên 70% stores, evaluate trên 30% còn lại.
+Thêm dropout để giảm overfit, sampling node để tránh OOM.
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from src.algo.rgat_reranker import _build_rgat_inputs
 DEVICE      = "cuda" if torch.cuda.is_available() else "cpu"
 EPOCHS      = 10
 LR          = 1e-3
-TRAIN_RATIO = 0.8
+TRAIN_RATIO = 0.7   # đổi thành 70/30
 RANDOM_SEED = 42
 BATCH_SIZE  = 1
 MAX_NODES   = 1000   # giới hạn số node tối đa mỗi store
@@ -77,7 +77,7 @@ def sample_nodes(store: dict, max_nodes: int) -> dict:
     return {
         "doc_id": store["doc_id"],
         "nodes": nodes,
-        "edges": store["edges"],  # có thể thêm sampling edge nếu cần
+        "edges": store["edges"],
     }
 
 
@@ -112,19 +112,29 @@ print(f"Eval split saved: {EVAL_SPLIT_FILE}")
 
 # ── Model ─────────────────────────────────────────────────────────────────────
 
-model = RGATWithClassifier(
+class RGATWithClassifierDropout(RGATWithClassifier):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_relations, num_classes, dropout=0.5):
+        super().__init__(in_channels, hidden_channels, out_channels, num_relations, num_classes)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x, edge_index, edge_type):
+        out = super().forward(x, edge_index, edge_type)
+        return self.dropout(out)
+
+model = RGATWithClassifierDropout(
     in_channels=768,
     hidden_channels=64,
     out_channels=32,
     num_relations=4,
     num_classes=2,
+    dropout=0.5,
 ).to(DEVICE)
 
-optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
+optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=5e-4)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
 criterion = nn.CrossEntropyLoss(weight=torch.tensor([0.3, 0.7]).to(DEVICE))
 
-scaler = GradScaler(device="cuda")   # API mới
+scaler = GradScaler(device="cuda")
 
 
 # ── Training loop ─────────────────────────────────────────────────────────────
@@ -133,18 +143,14 @@ best_acc  = 0.0
 best_loss = float("inf")
 
 for epoch in range(1, EPOCHS + 1):
-
-    # ── Train ────────────────────────────────────────────────────────────────
     model.train()
     t_loss, t_correct, t_nodes, skipped = 0.0, 0, 0, 0
 
     for store in train_stores:
-        store = sample_nodes(store, MAX_NODES)  # sampling node
+        store = sample_nodes(store, MAX_NODES)
 
         try:
-            x, edge_index, edge_type = _build_rgat_inputs(
-                store["nodes"], store["edges"]
-            )
+            x, edge_index, edge_type = _build_rgat_inputs(store["nodes"], store["edges"])
             labels = build_labels(store["nodes"])
         except Exception:
             skipped += 1
@@ -155,12 +161,9 @@ for epoch in range(1, EPOCHS + 1):
             skipped += 1
             continue
 
-        x          = x.to(DEVICE)
-        edge_index = edge_index.to(DEVICE)
-        edge_type  = edge_type.to(DEVICE)
-        labels     = labels.to(DEVICE)
+        x, edge_index, edge_type, labels = x.to(DEVICE), edge_index.to(DEVICE), edge_type.to(DEVICE), labels.to(DEVICE)
 
-        with autocast(device_type="cuda"):   # API mới
+        with autocast(device_type="cuda"):
             logits = model(x, edge_index, edge_type)
             loss   = criterion(logits, labels)
 
@@ -183,18 +186,14 @@ for epoch in range(1, EPOCHS + 1):
     train_loss = t_loss / max(1, len(train_stores) - skipped)
     train_acc  = t_correct / max(1, t_nodes)
 
-    # ── Eval ─────────────────────────────────────────────────────────────────
+    # Eval
     model.eval()
     e_loss, e_correct, e_nodes = 0.0, 0, 0
-
     with torch.no_grad():
         for store in eval_stores:
-            store = sample_nodes(store, MAX_NODES)  # sampling node
-
+            store = sample_nodes(store, MAX_NODES)
             try:
-                x, edge_index, edge_type = _build_rgat_inputs(
-                    store["nodes"], store["edges"]
-                )
+                x, edge_index, edge_type = _build_rgat_inputs(store["nodes"], store["edges"])
                 labels = build_labels(store["nodes"])
             except Exception:
                 continue
@@ -203,12 +202,9 @@ for epoch in range(1, EPOCHS + 1):
             if N == 0 or labels.size(0) != N:
                 continue
 
-            x          = x.to(DEVICE)
-            edge_index = edge_index.to(DEVICE)
-            edge_type  = edge_type.to(DEVICE)
-            labels     = labels.to(DEVICE)
+            x, edge_index, edge_type, labels = x.to(DEVICE), edge_index.to(DEVICE), edge_type.to(DEVICE), labels.to(DEVICE)
 
-            with autocast(device_type="cuda"):   # API mới
+            with autocast(device_type="cuda"):
                 logits   = model(x, edge_index, edge_type)
                 e_loss  += criterion(logits, labels).item()
                 e_correct += (logits.argmax(dim=1) == labels).sum().item()
@@ -222,20 +218,13 @@ for epoch in range(1, EPOCHS + 1):
     eval_acc  = e_correct / max(1, e_nodes)
 
     lr_now = scheduler.get_last_lr()[0]
-    print(
-        f"Epoch {epoch:2d}/{EPOCHS} | "
-        f"Train Loss: {train_loss:.4f} Acc: {train_acc:.4f} | "
-        f"Eval Loss: {eval_loss:.4f} Acc: {eval_acc:.4f} | "
-        f"LR: {lr_now:.2e} | Skipped: {skipped}"
-    )
+    print(f"Epoch {epoch:2d}/{EPOCHS} | Train Loss: {train_loss:.4f} Acc: {train_acc:.4f} | Eval Loss: {eval_loss:.4f} Acc: {eval_acc:.4f} | LR: {lr_now:.2e} | Skipped: {skipped}")
 
     if eval_acc > best_acc or (eval_acc == best_acc and eval_loss < best_loss):
-        best_acc  = eval_acc
-        best_loss = eval_loss
+        best_acc, best_loss = eval_acc, eval_loss
         torch.save(model.state_dict(), SAVE_DIR / "rgat_model.pt")
         print(f"  → Saved best model (eval_acc={best_acc:.4f})")
 
 print(f"\nTraining done.")
 print(f"Best eval acc: {best_acc:.4f}")
 print(f"Model: {SAVE_DIR / 'rgat_model.pt'}")
-print(f"Eval doc_ids (dùng cho ANLS evaluation): {eval_doc_ids}")
