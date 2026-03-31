@@ -13,7 +13,7 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler   # API mới
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -124,7 +124,7 @@ optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
 criterion = nn.CrossEntropyLoss(weight=torch.tensor([0.3, 0.7]).to(DEVICE))
 
-scaler = GradScaler()
+scaler = GradScaler(device="cuda")   # API mới
 
 
 # ── Training loop ─────────────────────────────────────────────────────────────
@@ -160,7 +160,7 @@ for epoch in range(1, EPOCHS + 1):
         edge_type  = edge_type.to(DEVICE)
         labels     = labels.to(DEVICE)
 
-        with autocast("cuda"):
+        with autocast(device_type="cuda"):   # API mới
             logits = model(x, edge_index, edge_type)
             loss   = criterion(logits, labels)
 
@@ -208,7 +208,7 @@ for epoch in range(1, EPOCHS + 1):
             edge_type  = edge_type.to(DEVICE)
             labels     = labels.to(DEVICE)
 
-            with autocast("cuda"):
+            with autocast(device_type="cuda"):   # API mới
                 logits   = model(x, edge_index, edge_type)
                 e_loss  += criterion(logits, labels).item()
                 e_correct += (logits.argmax(dim=1) == labels).sum().item()
