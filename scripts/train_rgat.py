@@ -13,7 +13,6 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -24,21 +23,21 @@ from src.algo.rgat_reranker import _build_rgat_inputs
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-DEVICE       = "cuda" if torch.cuda.is_available() else "cpu"
-EPOCHS       = 10
-LR           = 1e-3
-TRAIN_RATIO  = 0.8          # 80% train, 20% eval
-RANDOM_SEED  = 42
-STORE_ROOT   = PROJECT_ROOT / "artifacts" / "node_stores"
-SAVE_DIR     = PROJECT_ROOT / "artifacts" / "models"
+DEVICE      = "cuda" if torch.cuda.is_available() else "cpu"
+EPOCHS      = 10
+LR          = 1e-3
+TRAIN_RATIO = 0.8
+RANDOM_SEED = 42
+BATCH_SIZE  = 4          
+GRAD_ACCUM  = 4        
+STORE_ROOT  = PROJECT_ROOT / "artifacts" / "node_stores"
+SAVE_DIR    = PROJECT_ROOT / "artifacts" / "models"
 SAVE_DIR.mkdir(parents=True, exist_ok=True)
 
-BATCH_SIZE   = 16
-
-# File ghi lại doc_ids nào dùng để eval (để run_docvqa_submission biết)
 EVAL_SPLIT_FILE = PROJECT_ROOT / "artifacts" / "rgat_eval_doc_ids.json"
 
 print(f"Device: {DEVICE}")
+print(f"Batch size: {BATCH_SIZE} | Grad accum steps: {GRAD_ACCUM}")
 
 
 # ── Load stores ───────────────────────────────────────────────────────────────
@@ -70,6 +69,10 @@ def build_labels(nodes: list[dict]) -> torch.Tensor:
     return torch.tensor(labels, dtype=torch.long)
 
 
+def make_batches(stores: list[dict], batch_size: int) -> list[list[dict]]:
+    return [stores[i:i + batch_size] for i in range(0, len(stores), batch_size)]
+
+
 # ── Split ─────────────────────────────────────────────────────────────────────
 
 print(f"Loading stores from: {STORE_ROOT}")
@@ -89,10 +92,7 @@ train_stores = shuffled[:n_train]
 eval_stores  = shuffled[n_train:]
 
 print(f"Train stores: {len(train_stores)} | Eval stores: {len(eval_stores)}")
-print(f"Train doc_ids: {[s['doc_id'] for s in train_stores]}")
-print(f"Eval  doc_ids: {[s['doc_id'] for s in eval_stores]}")
 
-# Ghi eval doc_ids ra file để run_docvqa_submission dùng
 eval_doc_ids = [s["doc_id"] for s in eval_stores]
 EVAL_SPLIT_FILE.parent.mkdir(parents=True, exist_ok=True)
 EVAL_SPLIT_FILE.write_text(
@@ -122,16 +122,19 @@ criterion = nn.CrossEntropyLoss(weight=torch.tensor([0.3, 0.7]).to(DEVICE))
 best_acc  = 0.0
 best_loss = float("inf")
 
-train_loader = DataLoader(train_stores, batch_size=BATCH_SIZE, shuffle=True)
-eval_loader  = DataLoader(eval_stores, batch_size=BATCH_SIZE, shuffle=False)
-
 for epoch in range(1, EPOCHS + 1):
 
     # ── Train ────────────────────────────────────────────────────────────────
     model.train()
     t_loss, t_correct, t_nodes, skipped = 0.0, 0, 0, 0
 
-    for batch in train_loader:
+    train_batches = make_batches(train_stores, BATCH_SIZE)
+    optimizer.zero_grad()
+
+    for batch_idx, batch in enumerate(train_batches):
+        batch_loss = torch.tensor(0.0, device=DEVICE)
+        batch_valid = 0
+
         for store in batch:
             try:
                 x, edge_index, edge_type = _build_rgat_inputs(
@@ -152,29 +155,45 @@ for epoch in range(1, EPOCHS + 1):
             edge_type  = edge_type.to(DEVICE)
             labels     = labels.to(DEVICE)
 
-            logits = model(x, edge_index, edge_type)
-            loss   = criterion(logits, labels)
+            logits      = model(x, edge_index, edge_type)
+            loss        = criterion(logits, labels)
+            batch_loss  = batch_loss + loss
+            batch_valid += 1
 
-            optimizer.zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            optimizer.step()
-
-            t_loss    += loss.item()
             t_correct += (logits.argmax(dim=1) == labels).sum().item()
             t_nodes   += N
 
+            # Giải phóng GPU memory sau mỗi store
+            del x, edge_index, edge_type, labels, logits
+            if DEVICE == "cuda":
+                torch.cuda.empty_cache()
+
+        if batch_valid > 0:
+            # Chia trung bình theo store trong batch, rồi chia tiếp cho GRAD_ACCUM
+            avg_loss = batch_loss / batch_valid / GRAD_ACCUM
+            avg_loss.backward()
+            t_loss += (batch_loss / batch_valid).item()
+
+        # Update weights sau mỗi GRAD_ACCUM batch (hoặc batch cuối)
+        is_last_batch = (batch_idx == len(train_batches) - 1)
+        if (batch_idx + 1) % GRAD_ACCUM == 0 or is_last_batch:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
+            optimizer.zero_grad()
+
     scheduler.step()
 
-    train_loss = t_loss / max(1, len(train_stores) - skipped)
+    n_effective = max(1, len(train_batches) - skipped)
+    train_loss = t_loss / n_effective
     train_acc  = t_correct / max(1, t_nodes)
 
-    # ── Eval ────────────────────────────────────────────────────────────────
+    # ── Eval ─────────────────────────────────────────────────────────────────
     model.eval()
     e_loss, e_correct, e_nodes = 0.0, 0, 0
 
     with torch.no_grad():
-        for batch in eval_loader:
+        eval_batches = make_batches(eval_stores, BATCH_SIZE)
+        for batch in eval_batches:
             for store in batch:
                 try:
                     x, edge_index, edge_type = _build_rgat_inputs(
@@ -193,10 +212,14 @@ for epoch in range(1, EPOCHS + 1):
                 edge_type  = edge_type.to(DEVICE)
                 labels     = labels.to(DEVICE)
 
-                logits   = model(x, edge_index, edge_type)
-                e_loss  += criterion(logits, labels).item()
+                logits    = model(x, edge_index, edge_type)
+                e_loss   += criterion(logits, labels).item()
                 e_correct += (logits.argmax(dim=1) == labels).sum().item()
                 e_nodes   += N
+
+                del x, edge_index, edge_type, labels, logits
+                if DEVICE == "cuda":
+                    torch.cuda.empty_cache()
 
     eval_loss = e_loss / max(1, len(eval_stores))
     eval_acc  = e_correct / max(1, e_nodes)
@@ -209,7 +232,6 @@ for epoch in range(1, EPOCHS + 1):
         f"LR: {lr_now:.2e} | Skipped: {skipped}"
     )
 
-    # Save best dựa trên eval acc
     if eval_acc > best_acc or (eval_acc == best_acc and eval_loss < best_loss):
         best_acc  = eval_acc
         best_loss = eval_loss
