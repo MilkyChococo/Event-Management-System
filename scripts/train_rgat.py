@@ -2,7 +2,7 @@
 scripts/train_rgat.py
 
 Train RGAT trên 80% val stores, evaluate trên 20% còn lại.
-Tránh data leakage: không train trên data dùng để đánh giá ANLS.
+Thêm cơ chế sampling node để tránh OOM.
 """
 from __future__ import annotations
 
@@ -29,7 +29,8 @@ EPOCHS      = 10
 LR          = 1e-3
 TRAIN_RATIO = 0.8
 RANDOM_SEED = 42
-BATCH_SIZE  = 1 
+BATCH_SIZE  = 1
+MAX_NODES   = 1000   # giới hạn số node tối đa mỗi store
 STORE_ROOT  = PROJECT_ROOT / "artifacts" / "node_stores"
 SAVE_DIR    = PROJECT_ROOT / "artifacts" / "models"
 SAVE_DIR.mkdir(parents=True, exist_ok=True)
@@ -68,6 +69,18 @@ def build_labels(nodes: list[dict]) -> torch.Tensor:
     return torch.tensor(labels, dtype=torch.long)
 
 
+def sample_nodes(store: dict, max_nodes: int) -> dict:
+    """Giới hạn số node tối đa để tránh OOM."""
+    nodes = store["nodes"]
+    if len(nodes) > max_nodes:
+        nodes = random.sample(nodes, max_nodes)
+    return {
+        "doc_id": store["doc_id"],
+        "nodes": nodes,
+        "edges": store["edges"],  # có thể thêm sampling edge nếu cần
+    }
+
+
 # ── Split ─────────────────────────────────────────────────────────────────────
 
 print(f"Loading stores from: {STORE_ROOT}")
@@ -101,8 +114,8 @@ print(f"Eval split saved: {EVAL_SPLIT_FILE}")
 
 model = RGATWithClassifier(
     in_channels=768,
-    hidden_channels=64,   # giảm để nhẹ hơn
-    out_channels=32,       # giảm để nhẹ hơn
+    hidden_channels=64,
+    out_channels=32,
     num_relations=4,
     num_classes=2,
 ).to(DEVICE)
@@ -126,6 +139,8 @@ for epoch in range(1, EPOCHS + 1):
     t_loss, t_correct, t_nodes, skipped = 0.0, 0, 0, 0
 
     for store in train_stores:
+        store = sample_nodes(store, MAX_NODES)  # sampling node
+
         try:
             x, edge_index, edge_type = _build_rgat_inputs(
                 store["nodes"], store["edges"]
@@ -145,7 +160,7 @@ for epoch in range(1, EPOCHS + 1):
         edge_type  = edge_type.to(DEVICE)
         labels     = labels.to(DEVICE)
 
-        with autocast():
+        with autocast("cuda"):
             logits = model(x, edge_index, edge_type)
             loss   = criterion(logits, labels)
 
@@ -174,6 +189,8 @@ for epoch in range(1, EPOCHS + 1):
 
     with torch.no_grad():
         for store in eval_stores:
+            store = sample_nodes(store, MAX_NODES)  # sampling node
+
             try:
                 x, edge_index, edge_type = _build_rgat_inputs(
                     store["nodes"], store["edges"]
@@ -191,7 +208,7 @@ for epoch in range(1, EPOCHS + 1):
             edge_type  = edge_type.to(DEVICE)
             labels     = labels.to(DEVICE)
 
-            with autocast():
+            with autocast("cuda"):
                 logits   = model(x, edge_index, edge_type)
                 e_loss  += criterion(logits, labels).item()
                 e_correct += (logits.argmax(dim=1) == labels).sum().item()
