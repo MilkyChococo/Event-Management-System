@@ -37,8 +37,8 @@ class RGAT(nn.Module):
     def __init__(
         self,
         in_channels:    int = 768,
-        hidden_channels: int = 256,
-        out_channels:   int = 128,
+        hidden_channels: int = 64,
+        out_channels:   int = 32,
         num_relations:  int = NUM_RELATIONS,
         heads:          int = 4,
         dropout:        float = 0.1,
