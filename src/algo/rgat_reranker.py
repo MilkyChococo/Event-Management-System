@@ -279,10 +279,11 @@ def load_rgat_model(
     from pathlib import Path as _Path
     import torch as _torch
 
+    # Phải đồng bộ với train_rgat.py
     model = RGATWithClassifier(
         in_channels=768,
-        hidden_channels=64,
-        out_channels=32,
+        hidden_channels=128,   # đồng bộ với HIDDEN_CHANNELS trong train_rgat.py
+        out_channels=64,       # đồng bộ với OUT_CHANNELS trong train_rgat.py
         num_relations=4,
         num_classes=2,
     ).to(device)
@@ -293,6 +294,5 @@ def load_rgat_model(
         print(f"[RGAT] Loaded model from {model_path}")
     else:
         print(f"[RGAT] WARNING: No model at {model_path}, using random weights.")
-        print(f"[RGAT]          Run scripts/train_rgat.py first.")
     model.eval()
     return model
