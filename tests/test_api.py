@@ -544,6 +544,95 @@ class ApiTests(unittest.TestCase):
         delete_response = self.client.delete(f"/api/me/owned-events/{event_id}")
         self.assertEqual(delete_response.status_code, 200)
 
+    def test_owner_management_api_lists_and_removes_registrants(self) -> None:
+        self.login("student@example.com", "Student123!")
+        create_response = self.client.post(
+            "/api/me/owned-events",
+            json={
+                "title": "Owner API Managed Event",
+                "description": "Owner dashboard API test for attendee management and refunds.",
+                "category": "Community",
+                "location": "Maker Space",
+                "start_at": "2026-06-12T18:00:00",
+                "capacity": 30,
+                "price": 12,
+            },
+        )
+        self.assertEqual(create_response.status_code, 201)
+        event_id = create_response.json()["id"]
+
+        self.client.post("/api/auth/logout")
+        self.login("admin@example.com", "Admin123!")
+        approve_response = self.client.post(f"/api/admin/events/{event_id}/approve")
+        self.assertEqual(approve_response.status_code, 200)
+
+        self.client.post("/api/auth/logout")
+        register_guest_response = self.client.post(
+            "/api/auth/register",
+            json={
+                "name": "Owner API Guest",
+                "date_of_birth": "2004-09-01",
+                "country": "Vietnam",
+                "province": "Ho Chi Minh City",
+                "district": "District 1",
+                "ward": "Ben Nghe Ward",
+                "street_address": "88 API Street",
+                "phone_country_code": "+84",
+                "phone_country_label": "Vietnam",
+                "phone_country_flag": "vn",
+                "phone_local_number": "901223344",
+                "email": "owner.api.guest@example.com",
+                "password": "Password123!",
+            },
+        )
+        self.assertEqual(register_guest_response.status_code, 201)
+        guest_user_id = register_guest_response.json()["id"]
+
+        self.login("owner.api.guest@example.com", "Password123!")
+        guest_before = self.client.get("/api/me")
+        self.assertEqual(guest_before.status_code, 200)
+        register_response = self.client.post(
+            f"/api/events/{event_id}/register",
+            json={
+                "quantity": 2,
+                "attendee_name": "Owner API Guest",
+                "attendee_email": "owner.api.guest@example.com",
+                "attendee_phone": "+84 901223344",
+            },
+        )
+        self.assertEqual(register_response.status_code, 200)
+        guest_after_charge = self.client.get("/api/me")
+        self.assertEqual(guest_after_charge.status_code, 200)
+        self.assertLess(guest_after_charge.json()["balance"], guest_before.json()["balance"])
+
+        self.client.post("/api/auth/logout")
+        self.login("student@example.com", "Student123!")
+        management_response = self.client.get(f"/api/me/owned-events/{event_id}/management")
+        self.assertEqual(management_response.status_code, 200)
+        management_payload = management_response.json()
+        self.assertEqual(management_payload["summary"]["attendee_count"], 1)
+        self.assertEqual(management_payload["summary"]["ticket_count"], 2)
+        self.assertEqual(management_payload["summary"]["total_revenue"], 24.0)
+        self.assertEqual(management_payload["registrations"][0]["ticket_label"], "General Admission")
+
+        remove_response = self.client.post(
+            f"/api/me/owned-events/{event_id}/registrations/{guest_user_id}/remove",
+            json={
+                "reason": "Ticket issue needs manual rollback",
+                "refund_note": "Full refund moved back to attendee wallet.",
+            },
+        )
+        self.assertEqual(remove_response.status_code, 200)
+        self.assertEqual(remove_response.json()["summary"]["attendee_count"], 0)
+        self.assertEqual(remove_response.json()["summary"]["ticket_count"], 0)
+        self.assertEqual(remove_response.json()["summary"]["total_revenue"], 0.0)
+
+        self.client.post("/api/auth/logout")
+        self.login("owner.api.guest@example.com", "Password123!")
+        guest_after_refund = self.client.get("/api/me")
+        self.assertEqual(guest_after_refund.status_code, 200)
+        self.assertAlmostEqual(guest_after_refund.json()["balance"], guest_before.json()["balance"])
+
     def test_user_request_is_hidden_until_admin_approval(self) -> None:
         self.login("student@example.com", "Student123!")
         create_response = self.client.post(
@@ -643,6 +732,19 @@ class ApiTests(unittest.TestCase):
 
 
 
+    def test_change_password_rejects_same_as_current_password_via_api(self) -> None:
+        self.login("student@example.com", "Student123!")
+        change_response = self.client.post(
+            "/api/me/change-password",
+            json={
+                "current_password": "Student123!",
+                "new_password": "Student123!",
+            },
+        )
+        self.assertEqual(change_response.status_code, 409)
+        self.assertEqual(change_response.json()["error"]["code"], "PASSWORD_UNCHANGED")
+
+
     def test_forgot_password_updates_credentials(self) -> None:
         response = self.client.post(
             "/api/auth/forgot-password",
@@ -659,6 +761,19 @@ class ApiTests(unittest.TestCase):
             json={"email": "student@example.com", "password": "Student456!"},
         )
         self.assertEqual(login_response.status_code, 200)
+
+
+    def test_forgot_password_rejects_same_as_current_password(self) -> None:
+        response = self.client.post(
+            "/api/auth/forgot-password",
+            json={
+                "email": "student@example.com",
+                "date_of_birth": "2005-08-20",
+                "new_password": "Student123!",
+            },
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["error"]["code"], "PASSWORD_UNCHANGED")
 
 
     def test_user_can_update_profile_and_avatar(self) -> None:
@@ -736,6 +851,35 @@ class ApiTests(unittest.TestCase):
         kinds = [item["kind"] for item in notifications_response.json()["items"]]
         self.assertIn("recent_notice", kinds)
         self.assertNotIn("old_notice", kinds)
+
+    def test_user_can_send_issue_report_to_admin(self) -> None:
+        self.login("student@example.com", "Student123!")
+        response = self.client.post(
+            "/api/me/issues",
+            json={
+                "title": "Billing countdown was stuck",
+                "category": "Billing",
+                "description": "The QR countdown stayed on screen after the request had already expired once.",
+                "page_path": "/account/billing",
+            },
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["title"], "Billing countdown was stuck")
+        self.assertEqual(response.json()["page_path"], "/account/billing")
+
+        user_notifications = self.client.get("/api/me/notifications")
+        self.assertEqual(user_notifications.status_code, 200)
+        self.assertTrue(any(item["kind"] == "issue_sent" for item in user_notifications.json()["items"]))
+
+        self.client.post("/api/auth/logout")
+        self.login("admin@example.com", "Admin123!")
+        admin_notifications = self.client.get("/api/me/notifications")
+        self.assertEqual(admin_notifications.status_code, 200)
+        self.assertTrue(any(item["kind"] == "issue_reported" for item in admin_notifications.json()["items"]))
+
+        admin_issue_reports = self.client.get("/api/admin/issues")
+        self.assertEqual(admin_issue_reports.status_code, 200)
+        self.assertTrue(any(item["title"] == "Billing countdown was stuck" for item in admin_issue_reports.json()))
 
     def test_notifications_api_returns_admin_review_and_read_flow(self) -> None:
         self.login("student@example.com", "Student123!")

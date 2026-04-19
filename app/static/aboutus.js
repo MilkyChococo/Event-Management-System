@@ -1,4 +1,4 @@
-import { getCurrentUser, setupAccountMenu, setupGlobalFooter } from "/static/shared.js?v=20260328-notification-reminder-cta";
+import { getCurrentUser, setupAccountMenu, setupGlobalFooter } from "/static/shared.js?v=20260406-contact-stack-fab";
 
 const welcomeText = document.querySelector("#welcome-text");
 const roleChip = document.querySelector("#about-role-chip");
@@ -34,4 +34,5 @@ async function boot() {
 }
 
 boot();
+
 

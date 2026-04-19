@@ -11,7 +11,7 @@ import {
   setupAccountMenu,
   showNotice,
   showToast,
-} from "/static/shared.js?v=20260328-notification-reminder-cta";
+} from "/static/shared.js?v=20260406-contact-stack-fab";
 
 const messageBox = document.querySelector("[data-testid='detail-message']");
 const detailTitle = document.querySelector("[data-testid='detail-title']");
@@ -58,6 +58,17 @@ const detailRegistrationPhone = document.querySelector("#detail-registration-pho
 const detailRegistrationSummary = document.querySelector("#detail-registration-summary");
 const detailRegistrationQuantityFocus = document.querySelector("#detail-registration-quantity-focus");
 const detailRegistrationPriceFocus = document.querySelector("#detail-registration-price-focus");
+const detailBackLink = document.querySelector("#detail-back-link");
+const ownerSection = document.querySelector("[data-testid='detail-owner-section']");
+const ownerSummary = document.querySelector("#detail-owner-summary");
+const ownerList = document.querySelector("#detail-owner-list");
+const ownerRemoveModal = document.querySelector("#detail-owner-remove-modal");
+const ownerRemoveClose = document.querySelector("#detail-owner-remove-close");
+const ownerRemoveCancel = document.querySelector("#detail-owner-remove-cancel");
+const ownerRemoveForm = document.querySelector("#detail-owner-remove-form");
+const ownerRemoveTarget = document.querySelector("#detail-owner-remove-target");
+const ownerRemoveReason = document.querySelector("#detail-owner-remove-reason");
+const ownerRemoveRefund = document.querySelector("#detail-owner-remove-refund");
 const attendeeSection = document.querySelector("[data-testid='detail-attendee-section']");
 const attendeeList = document.querySelector("#detail-attendee-list");
 const loadAttendeesButton = document.querySelector("#detail-load-attendees");
@@ -74,7 +85,69 @@ const state = {
   eventId: extractEventIdFromPath(),
   galleryIndex: 0,
   registrationOpen: false,
+  ownerManagement: null,
+  ownerRemovalOpen: false,
+  ownerTargetRegistration: null,
 };
+
+function mapBackLabel(pathname) {
+  if (pathname === "/activity") {
+    return "Back to activity";
+  }
+  if (pathname === "/admin/manager") {
+    return "Back to manager";
+  }
+  if (pathname === "/admin/analytics") {
+    return "Back to analytics";
+  }
+  if (pathname === "/account") {
+    return "Back to account";
+  }
+  return "Back to dashboard";
+}
+
+function getInternalReferrerUrl() {
+  const rawReferrer = String(document.referrer || "").trim();
+  if (!rawReferrer) {
+    return null;
+  }
+  try {
+    const parsed = new URL(rawReferrer);
+    if (parsed.origin !== window.location.origin) {
+      return null;
+    }
+    if (parsed.pathname === window.location.pathname) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function setupBackLink() {
+  if (!detailBackLink) {
+    return;
+  }
+
+  const referrerUrl = getInternalReferrerUrl();
+  if (!referrerUrl) {
+    detailBackLink.textContent = "\u2190 Back to dashboard";
+    detailBackLink.href = "/dashboard";
+    return;
+  }
+
+  const fallbackHref = `${referrerUrl.pathname}${referrerUrl.search}${referrerUrl.hash}`;
+  detailBackLink.textContent = `\u2190 ${mapBackLabel(referrerUrl.pathname)}`;
+  detailBackLink.href = fallbackHref || "/dashboard";
+
+  detailBackLink.addEventListener("click", (event) => {
+    if (window.history.length > 1) {
+      event.preventDefault();
+      window.history.back();
+    }
+  });
+}
 
 function getEventImages(event) {
   const images = Array.isArray(event?.image_urls) ? event.image_urls.filter(Boolean) : [];
@@ -331,11 +404,181 @@ function closeRegistrationModal() {
   }
 }
 
+function buildOwnerRegistrationBlocks(registrations) {
+  if (!Array.isArray(registrations) || !registrations.length) {
+    return `
+      <article class="detail-owner-empty">
+        <p class="eyebrow">No bookings yet</p>
+        <h3>Your registrant cards will appear here.</h3>
+        <p class="subtle">As soon as someone reserves a seat, this dashboard will show payment, quantity, and removal controls in separate blocks.</p>
+      </article>
+    `;
+  }
+
+  return `
+    <div class="detail-owner-list-head">
+      <div>
+        <p class="eyebrow">Registrants</p>
+        <h3>Active reservation blocks</h3>
+      </div>
+      <p class="subtle">${escapeHtml(String(registrations.length))} active booking${registrations.length > 1 ? "s" : ""}</p>
+    </div>
+    ${registrations
+      .map((registration) => {
+        const initials = String(registration.name || "G")
+          .split(/\s+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((part) => part[0]?.toUpperCase() || "")
+          .join("");
+        return `
+          <article class="detail-owner-registration-card">
+            <div class="detail-owner-registration-head">
+              <div class="detail-owner-persona">
+                <span class="detail-owner-avatar">${escapeHtml(initials || "G")}</span>
+                <div class="detail-owner-persona-copy">
+                  <div class="detail-owner-persona-row">
+                    <h3>${escapeHtml(registration.name)}</h3>
+                    <span class="detail-owner-status-chip">${escapeHtml(registration.status || "confirmed")}</span>
+                  </div>
+                  <div class="detail-owner-contact-list">
+                    <span class="detail-owner-contact-chip">${escapeHtml(registration.email || "No email")}</span>
+                    <span class="detail-owner-contact-chip">${escapeHtml(registration.phone || "No phone")}</span>
+                  </div>
+                </div>
+              </div>
+              <button class="secondary-button danger-button detail-owner-remove-button" data-action="owner-remove" data-user-id="${registration.user_id}" type="button">Remove</button>
+            </div>
+            <div class="detail-owner-meta">
+              <article class="detail-owner-meta-card">
+                <span>Ticket type</span>
+                <strong>${escapeHtml(registration.ticket_label)}</strong>
+              </article>
+              <article class="detail-owner-meta-card">
+                <span>Quantity</span>
+                <strong>${escapeHtml(String(registration.quantity || 1))} ticket${Number(registration.quantity || 1) > 1 ? "s" : ""}</strong>
+              </article>
+              <article class="detail-owner-meta-card is-money">
+                <span>Paid</span>
+                <strong>${escapeHtml(formatCurrency(registration.total_price || 0))}</strong>
+              </article>
+              <article class="detail-owner-meta-card">
+                <span>Registered at</span>
+                <strong>${escapeHtml(formatDateTime(registration.registered_at))}</strong>
+              </article>
+            </div>
+          </article>
+        `;
+      })
+      .join("")}
+  `;
+}
+
+function renderOwnerManagement() {
+  const isOwnerView = Boolean(state.ownerManagement);
+  ownerSection?.classList.toggle("hidden", !isOwnerView);
+  if (!isOwnerView) {
+    if (ownerSummary) {
+      ownerSummary.innerHTML = "";
+    }
+    if (ownerList) {
+      ownerList.innerHTML = "";
+    }
+    return;
+  }
+
+  const summary = state.ownerManagement.summary || { attendee_count: 0, ticket_count: 0, total_revenue: 0 };
+  if (ownerSummary) {
+    ownerSummary.innerHTML = `
+      <article class="detail-owner-summary-card">
+        <span class="detail-owner-stat-label">Registered people</span>
+        <strong class="detail-owner-stat-value">${escapeHtml(String(summary.attendee_count || 0))}</strong>
+        <p class="detail-owner-stat-copy">Unique accounts currently holding an active reservation.</p>
+      </article>
+      <article class="detail-owner-summary-card">
+        <span class="detail-owner-stat-label">Tickets sold</span>
+        <strong class="detail-owner-stat-value">${escapeHtml(String(summary.ticket_count || 0))}</strong>
+        <p class="detail-owner-stat-copy">All seats already reserved across confirmed bookings.</p>
+      </article>
+      <article class="detail-owner-summary-card is-accent">
+        <span class="detail-owner-stat-label">Revenue received</span>
+        <strong class="detail-owner-stat-value">${escapeHtml(formatCurrency(summary.total_revenue || 0))}</strong>
+        <p class="detail-owner-stat-copy">Collected amount shown before later organizer-side removals.</p>
+      </article>
+    `;
+  }
+
+  const registrations = Array.isArray(state.ownerManagement.registrations) ? state.ownerManagement.registrations : [];
+  if (!ownerList) {
+    return;
+  }
+  ownerList.innerHTML = buildOwnerRegistrationBlocks(registrations);
+}
+
+async function loadOwnerManagement() {
+  state.ownerManagement = null;
+  state.ownerTargetRegistration = null;
+  try {
+    const management = await api(`/api/me/owned-events/${state.eventId}/management`);
+    state.ownerManagement = management;
+    state.event = management.event;
+  } catch {
+    state.ownerManagement = null;
+  }
+  renderEvent();
+  renderOwnerManagement();
+}
+
+function openOwnerRemovalModal(registrationUserId) {
+  if (!state.ownerManagement || !ownerRemoveModal) {
+    return;
+  }
+  const registration = (state.ownerManagement.registrations || []).find(
+    (item) => Number(item.user_id) === Number(registrationUserId)
+  );
+  if (!registration) {
+    showToast("Registrant not found.", "error");
+    return;
+  }
+  state.ownerTargetRegistration = registration;
+  if (ownerRemoveTarget) {
+    ownerRemoveTarget.innerHTML = `
+      <strong>${escapeHtml(registration.name)}</strong>
+      <p class="subtle">${escapeHtml(registration.ticket_label)} - ${escapeHtml(String(registration.quantity || 1))} ticket(s) - ${escapeHtml(formatCurrency(registration.total_price || 0))}</p>
+    `;
+  }
+  if (ownerRemoveReason) {
+    ownerRemoveReason.value = "";
+  }
+  if (ownerRemoveRefund) {
+    ownerRemoveRefund.value = registration.total_price > 0 ? `Full refund ${formatCurrency(registration.total_price)} back to attendee wallet.` : "No refund required because this registration was free.";
+  }
+  ownerRemoveModal.classList.remove("hidden");
+  ownerRemoveModal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+  state.ownerRemovalOpen = true;
+  ownerRemoveReason?.focus();
+}
+
+function closeOwnerRemovalModal() {
+  ownerRemoveModal?.classList.add("hidden");
+  ownerRemoveModal?.setAttribute("aria-hidden", "true");
+  if (!state.registrationOpen) {
+    document.body.classList.remove("modal-open");
+  }
+  state.ownerRemovalOpen = false;
+  state.ownerTargetRegistration = null;
+  if (ownerRemoveTarget) {
+    ownerRemoveTarget.innerHTML = "";
+  }
+}
+
 function renderEvent() {
   if (!state.event) {
     return;
   }
 
+  const isOwnerView = Boolean(state.ownerManagement);
   renderGallery();
   requestAnimationFrame(syncDetailPosterRail);
   detailTitle.textContent = state.event.title;
@@ -376,9 +619,9 @@ function renderEvent() {
   detailMapLink.classList.toggle("hidden", !hasMapTarget);
   renderSpeakerList(state.event.speaker_lineup || []);
   renderTicketTypeList(state.event.ticket_types || []);
-  detailStatus.textContent = state.event.is_registered ? "Reserved" : "Not reserved yet";
-  registerButton.classList.toggle("hidden", state.event.is_registered);
-  cancelButton.classList.toggle("hidden", !state.event.is_registered);
+  detailStatus.textContent = isOwnerView ? "Owner view" : state.event.is_registered ? "Reserved" : "Not reserved yet";
+  registerButton.classList.toggle("hidden", state.event.is_registered || isOwnerView);
+  cancelButton.classList.toggle("hidden", !state.event.is_registered || isOwnerView);
   registerButton.disabled = state.event.seats_left === 0;
   renderRegistrationSummary();
 }
@@ -386,19 +629,25 @@ function renderEvent() {
 async function loadEvent() {
   state.event = await api(`/api/events/${state.eventId}`);
   renderEvent();
+}
 
-  if (shouldAutoOpenRegistration()) {
-    clearAutoOpenRegistrationFlag();
-    if (state.event.is_registered) {
-      showToast("You already have a reservation for this event.");
-      return;
-    }
-    if (state.event.seats_left <= 0) {
-      showToast("No seats left for this event.", "error");
-      return;
-    }
-    openRegistrationModal();
+function maybeAutoOpenRegistration() {
+  if (!shouldAutoOpenRegistration()) {
+    return;
   }
+  clearAutoOpenRegistrationFlag();
+  if (state.ownerManagement) {
+    return;
+  }
+  if (state.event.is_registered) {
+    showToast("You already have a reservation for this event.");
+    return;
+  }
+  if (state.event.seats_left <= 0) {
+    showToast("No seats left for this event.", "error");
+    return;
+  }
+  openRegistrationModal();
 }
 
 async function loadAttendees() {
@@ -452,6 +701,33 @@ async function handleCancel() {
   }
 }
 
+async function handleOwnerRemovalSubmit(event) {
+  event.preventDefault();
+  if (!state.ownerTargetRegistration) {
+    return;
+  }
+  try {
+    const management = await api(
+      `/api/me/owned-events/${state.eventId}/registrations/${state.ownerTargetRegistration.user_id}/remove`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          reason: ownerRemoveReason?.value.trim() || "",
+          refund_note: ownerRemoveRefund?.value.trim() || "",
+        }),
+      }
+    );
+    state.ownerManagement = management;
+    state.event = management.event;
+    renderEvent();
+    renderOwnerManagement();
+    closeOwnerRemovalModal();
+    showToast("Registrant removed and refund processed.");
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
 async function boot() {
   state.user = await getCurrentUser();
   if (!state.user) {
@@ -465,6 +741,7 @@ async function boot() {
 
   setupAccountMenu(state.user);
   setupGlobalFooter(state.user);
+  setupBackLink();
   attendeeSection.classList.toggle("hidden", state.user.role !== "admin");
   registerButton.addEventListener("click", handleRegister);
   cancelButton.addEventListener("click", handleCancel);
@@ -479,6 +756,29 @@ async function boot() {
     if (target.closest('[data-action="close-detail-registration"]')) {
       closeRegistrationModal();
     }
+  });
+  ownerRemoveClose?.addEventListener("click", closeOwnerRemovalModal);
+  ownerRemoveCancel?.addEventListener("click", closeOwnerRemovalModal);
+  ownerRemoveForm?.addEventListener("submit", handleOwnerRemovalSubmit);
+  ownerRemoveModal?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    if (target.closest('[data-action="close-owner-remove"]')) {
+      closeOwnerRemovalModal();
+    }
+  });
+  ownerList?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const actionButton = target.closest("[data-action='owner-remove']");
+    if (!(actionButton instanceof HTMLElement)) {
+      return;
+    }
+    openOwnerRemovalModal(actionButton.dataset.userId);
   });
   [detailRegistrationQuantity, detailRegistrationName, detailRegistrationEmail, detailRegistrationPhone].forEach((element) => {
     element?.addEventListener("input", renderRegistrationSummary);
@@ -510,6 +810,9 @@ async function boot() {
     if (event.key === "Escape" && state.registrationOpen) {
       closeRegistrationModal();
     }
+    if (event.key === "Escape" && state.ownerRemovalOpen) {
+      closeOwnerRemovalModal();
+    }
   });
   loadAttendeesButton.addEventListener("click", async () => {
     try {
@@ -522,9 +825,13 @@ async function boot() {
   syncDetailPosterRail();
 
   await loadEvent();
+  await loadOwnerManagement();
+  maybeAutoOpenRegistration();
 }
 
 boot();
+
+
 
 
 

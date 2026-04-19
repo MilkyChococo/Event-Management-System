@@ -9,7 +9,7 @@ import {
   setupAccountMenu,
   setupGlobalFooter,
   showToast,
-} from "/static/shared.js?v=20260328-notification-reminder-cta";
+} from "/static/shared.js?v=20260406-contact-stack-fab";
 
 const profileAvatar = document.querySelector("[data-testid='profile-avatar']");
 const profileRole = document.querySelector("#profile-role");
@@ -536,6 +536,7 @@ async function boot() {
 }
 
 boot();
+
 
 
 

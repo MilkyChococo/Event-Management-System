@@ -123,6 +123,13 @@ function setActiveTab(targetId) {
   clearLoginError();
 }
 
+function getInitialPanel() {
+  const url = new URL(window.location.href);
+  const requestedPanel = url.searchParams.get("panel") || window.location.hash.replace(/^#/, "");
+  const allowedPanels = new Set(["login-panel", "register-panel", "forgot-panel"]);
+  return allowedPanels.has(requestedPanel) ? requestedPanel : "login-panel";
+}
+
 async function handleLogin(event) {
   event.preventDefault();
   clearNotice(messageBox);
@@ -214,6 +221,7 @@ async function boot() {
   tabButtons.forEach((button) => {
     button.addEventListener("click", () => setActiveTab(button.dataset.tabTarget));
   });
+  setActiveTab(getInitialPanel());
   loginEmail.addEventListener("input", clearLoginError);
   loginPassword.addEventListener("input", clearLoginError);
   loginForm.addEventListener("submit", handleLogin);

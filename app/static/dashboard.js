@@ -12,7 +12,7 @@ import {
   setupAccountMenu,
   showToast,
   toDatetimeLocal,
-} from "/static/shared.js?v=20260328-notification-reminder-cta";
+} from "/static/shared.js?v=20260406-contact-stack-fab";
 
 const eventGrid = document.querySelector("[data-testid='event-grid']");
 const refreshButton = document.querySelector("#refresh-events");
@@ -296,7 +296,7 @@ function renderEventBoardState() {
 
 function buildEventMatchMarkup(event) {
   const registrationAction = event.is_registered
-    ? `<button class="secondary-button" data-action="cancel" data-id="${event.id}" type="button">Cancel reservation</button>`
+    ? `<button class="secondary-button danger-button" data-action="cancel" data-id="${event.id}" type="button">Cancel</button>`
     : `<button class="primary-button" data-action="register" data-id="${event.id}" type="button" ${event.seats_left === 0 ? "disabled" : ""}>Reserve now</button>`;
   return `
     <article class="event-match-card" data-testid="event-match-${event.id}">
@@ -877,7 +877,7 @@ function clearEventSlideTimer() {
 
 function buildEventSlideMarkup(event) {
   const registrationAction = event.is_registered
-    ? `<button class="secondary-button" data-action="cancel" data-id="${event.id}" type="button">Cancel reservation</button>`
+    ? `<button class="secondary-button danger-button" data-action="cancel" data-id="${event.id}" type="button">Cancel</button>`
     : `<button class="primary-button" data-action="register" data-id="${event.id}" type="button" ${event.seats_left === 0 ? "disabled" : ""}>Reserve now</button>`;
   const deadlineLabel = event.registration_deadline ? `Register by ${formatDateTime(event.registration_deadline)}` : "Open registration";
   const seatWarning = event.seats_left > 0 && event.seats_left <= 3 ? `<span class="pill pill-warning">Only ${escapeHtml(String(event.seats_left))} seats left</span>` : "";
@@ -1764,6 +1764,7 @@ async function boot() {
 }
 
 boot();
+
 
 
 

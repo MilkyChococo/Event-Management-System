@@ -16,10 +16,14 @@ from app.schemas import (
     EventInput,
     EventOutput,
     ForgotPasswordInput,
+    IssueReportInput,
+    IssueReportOutput,
     LoginInput,
     MessageOutput,
     NotificationListOutput,
     OwnedEventCreateInput,
+    OwnedEventManagementOutput,
+    OwnedEventRegistrationRemovalInput,
     PasswordChangeInput,
     RegistrationInput,
     UserCreate,
@@ -248,6 +252,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> dict[str, str]:
         return service.mark_notifications_read(user["id"])
 
+    @app.post("/api/me/issues", response_model=IssueReportOutput, status_code=status.HTTP_201_CREATED)
+    async def create_my_issue_report(
+        payload: IssueReportInput,
+        service: EventRegistrationService = Depends(get_service),
+        user: dict = Depends(require_user),
+    ) -> dict:
+        return service.create_issue_report(user["id"], payload.model_dump())
+
     @app.put("/api/me", response_model=UserOutput)
     async def update_me(
         payload: UserUpdateInput,
@@ -325,6 +337,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> dict[str, str]:
         service.delete_owned_event(user["id"], event_id)
         return {"message": "Owned event deleted."}
+
+    @app.get("/api/me/owned-events/{event_id}/management", response_model=OwnedEventManagementOutput)
+    async def get_my_owned_event_management(
+        event_id: int,
+        service: EventRegistrationService = Depends(get_service),
+        user: dict = Depends(require_user),
+    ) -> dict:
+        return service.get_owned_event_management(user["id"], event_id)
+
+    @app.post("/api/me/owned-events/{event_id}/registrations/{registration_user_id}/remove", response_model=OwnedEventManagementOutput)
+    async def remove_owned_event_registration(
+        event_id: int,
+        registration_user_id: int,
+        payload: OwnedEventRegistrationRemovalInput,
+        service: EventRegistrationService = Depends(get_service),
+        user: dict = Depends(require_user),
+    ) -> dict:
+        return service.remove_owned_event_registration(user["id"], event_id, registration_user_id, payload.model_dump())
 
     @app.get("/api/events", response_model=list[EventOutput])
     async def list_events(
@@ -416,6 +446,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> dict[str, str]:
         service.delete_event(event_id)
         return {"message": "Event deleted."}
+
+    @app.get("/api/admin/issues", response_model=list[IssueReportOutput])
+    async def get_admin_issue_reports(
+        service: EventRegistrationService = Depends(get_service),
+        _: dict = Depends(require_admin),
+    ) -> list[dict]:
+        return service.list_issue_reports()
 
     @app.get("/api/admin/analytics", response_model=AdminAnalyticsOutput)
     async def get_admin_analytics(

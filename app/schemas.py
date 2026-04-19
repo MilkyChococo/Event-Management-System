@@ -200,6 +200,16 @@ class RegistrationInput(BaseModel):
     def _clean_attendee_email(cls, value: object) -> str:
         return _validate_optional_email(str(value or ""))
 
+
+class OwnedEventRegistrationRemovalInput(BaseModel):
+    reason: str = Field(min_length=4, max_length=240)
+    refund_note: str = Field(default="", max_length=400)
+
+    @field_validator("reason", "refund_note", mode="before")
+    @classmethod
+    def _clean_removal_text(cls, value: object) -> str:
+        return str(value or "").strip()
+
 class EventInput(BaseModel):
     title: str = Field(min_length=3, max_length=120)
     description: str = Field(min_length=10, max_length=1000)
@@ -369,6 +379,30 @@ class AttendeeOutput(BaseModel):
     quantity: int
     status: str
 
+
+class OwnedEventRegistrationOutput(BaseModel):
+    user_id: int
+    name: str
+    email: str
+    phone: str
+    registered_at: str
+    ticket_label: str
+    quantity: int
+    total_price: float
+    status: str
+
+
+class OwnedEventRegistrationSummaryOutput(BaseModel):
+    attendee_count: int
+    ticket_count: int
+    total_revenue: float
+
+
+class OwnedEventManagementOutput(BaseModel):
+    event: EventOutput
+    summary: OwnedEventRegistrationSummaryOutput
+    registrations: list[OwnedEventRegistrationOutput]
+
 class UserTicketOutput(BaseModel):
     event_id: int
     title: str
@@ -404,6 +438,31 @@ class NotificationOutput(BaseModel):
 class NotificationListOutput(BaseModel):
     unread_count: int
     items: list[NotificationOutput]
+
+class IssueReportInput(BaseModel):
+    title: str = Field(min_length=4, max_length=120)
+    category: str = Field(default="General", min_length=2, max_length=40)
+    description: str = Field(min_length=10, max_length=1500)
+    page_path: str = Field(default="", max_length=255)
+
+    @field_validator("title", "category", "description", "page_path", mode="before")
+    @classmethod
+    def _clean_issue_text(cls, value: object) -> str:
+        return str(value or "").strip()
+
+
+class IssueReportOutput(BaseModel):
+    id: int
+    user_id: int
+    user_name: str
+    user_email: str
+    title: str
+    category: str
+    description: str
+    page_path: str
+    status: str
+    created_at: str
+
 
 class WalletTopUpInput(BaseModel):
     amount: float = Field(gt=0, le=1_000_000_000)

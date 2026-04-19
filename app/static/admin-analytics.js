@@ -8,7 +8,7 @@ import {
   setupGlobalFooter,
   setupAccountMenu,
   showToast,
-} from "/static/shared.js?v=20260328-notification-reminder-cta";
+} from "/static/shared.js?v=20260406-contact-stack-fab";
 
 const refreshButton = document.querySelector("#admin-analytics-refresh");
 const welcomeText = document.querySelector("#welcome-text");
@@ -281,4 +281,5 @@ async function boot() {
 }
 
 boot();
+
 

@@ -10,7 +10,7 @@ import {
   setupGlobalFooter,
   setupAccountMenu,
   showToast,
-} from "/static/shared.js?v=20260328-notification-reminder-cta";
+} from "/static/shared.js?v=20260406-contact-stack-fab";
 import {
   DEFAULT_COUNTRY,
   DEFAULT_DISTRICT,
@@ -653,7 +653,7 @@ function renderTickets() {
             <a class="secondary-button" href="/events/${ticket.event_id}/view">View event</a>
             <button class="secondary-button" data-action="download-pass" data-id="${ticket.event_id}" type="button">Download pass</button>
             <button class="secondary-button" data-action="add-calendar" data-id="${ticket.event_id}" type="button">Add to calendar</button>
-            ${isActive ? `<button class="secondary-button danger-button" data-action="cancel-ticket" data-id="${ticket.event_id}" type="button">Cancel reservation</button>` : ""}
+            ${isActive ? `<button class="secondary-button danger-button" data-action="cancel-ticket" data-id="${ticket.event_id}" type="button">Cancel</button>` : ""}
           </div>
         </article>
       `;
@@ -823,4 +823,5 @@ async function boot() {
 }
 
 boot();
+
 

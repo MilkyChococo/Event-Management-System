@@ -89,7 +89,13 @@ export function clearNotice(target) {
 }
 
 let toastStack = null;
-
+const SUPPORT_CONTACT = {
+  name: "Truong Thien Phu",
+  email: "thienphu210505@gmail.com",
+  phone: "0365349036",
+  location: "Thu Duc, Ho Chi Minh City",
+  note: "Primary admin contact for website information, event updates, and user support.",
+};
 function ensureToastStack() {
   if (toastStack instanceof HTMLElement && document.body.contains(toastStack)) {
     return toastStack;
@@ -312,7 +318,7 @@ async function ensureLocationPickerModal() {
         </div>
         <div class="button-row">
           <button class="primary-button" id="location-picker-confirm" type="button">Use this location</button>
-          <button class="secondary-button" type="button" data-location-action="close">Cancel</button>
+          <button class="secondary-button danger-button" type="button" data-location-action="close">Cancel</button>
         </div>
       </div>
     </div>
@@ -810,8 +816,313 @@ function setupNotificationMenu() {
   return shell;
 }
 
+function syncSharedModalLock() {
+  const hasOpenModal = Boolean(document.querySelector(".admin-modal:not(.hidden)"));
+  document.body.classList.toggle("modal-open", hasOpenModal);
+}
+
+function ensureIssueReporterShell() {
+  let root = document.querySelector("[data-issue-report-root]");
+  if (!(root instanceof HTMLElement)) {
+    root = document.createElement("div");
+    root.setAttribute("data-issue-report-root", "");
+    root.innerHTML = `
+      <button class="issue-report-trigger" data-testid="issue-report-trigger" type="button" aria-label="Raise issue">
+        <span class="issue-report-trigger-mark" aria-hidden="true">!</span>
+      </button>
+      <div id="issue-report-modal" class="admin-modal hidden" aria-hidden="true">
+        <div class="admin-modal-backdrop" data-issue-report-action="close"></div>
+        <div class="admin-modal-dialog admin-card issue-report-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="issue-report-title-heading">
+          <div class="admin-modal-header">
+            <div>
+              <p class="eyebrow">Raise issue</p>
+              <h3 id="issue-report-title-heading">Send an issue report to admin</h3>
+              <p class="subtle issue-report-copy">Describe the problem clearly so the admin can review it from the right page context.</p>
+            </div>
+            <button class="secondary-button" id="issue-report-close" type="button" data-issue-report-action="close">Close</button>
+          </div>
+          <form id="issue-report-form" class="form-grid admin-modal-form">
+            <label>
+              Issue title
+              <input id="issue-report-title" type="text" minlength="4" maxlength="120" placeholder="Ticket quantity did not update" required />
+            </label>
+            <label>
+              Category
+              <select id="issue-report-category">
+                <option value="General">General</option>
+                <option value="Reservation">Reservation</option>
+                <option value="Billing">Billing</option>
+                <option value="UI">UI</option>
+                <option value="Notification">Notification</option>
+              </select>
+            </label>
+            <label class="full-width">
+              What happened?
+              <textarea id="issue-report-description" rows="5" minlength="10" maxlength="1500" placeholder="Explain the issue, what you expected, and what actually happened." required></textarea>
+            </label>
+            <div class="button-row issue-report-actions full-width">
+              <button class="secondary-button danger-button" id="issue-report-cancel" type="button" data-issue-report-action="close">Cancel</button>
+              <button class="primary-button" id="issue-report-submit" type="submit">Send report</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(root);
+  }
+
+  const trigger = root.querySelector("[data-testid='issue-report-trigger']");
+  const modal = root.querySelector("#issue-report-modal");
+  const form = root.querySelector("#issue-report-form");
+  const closeButton = root.querySelector("#issue-report-close");
+  const cancelButton = root.querySelector("#issue-report-cancel");
+  const titleInput = root.querySelector("#issue-report-title");
+  const categoryInput = root.querySelector("#issue-report-category");
+  const descriptionInput = root.querySelector("#issue-report-description");
+
+  if (
+    !(trigger instanceof HTMLButtonElement) ||
+    !(modal instanceof HTMLElement) ||
+    !(form instanceof HTMLFormElement) ||
+    !(closeButton instanceof HTMLButtonElement) ||
+    !(cancelButton instanceof HTMLButtonElement) ||
+    !(titleInput instanceof HTMLInputElement) ||
+    !(categoryInput instanceof HTMLSelectElement) ||
+    !(descriptionInput instanceof HTMLTextAreaElement)
+  ) {
+    return null;
+  }
+
+  return { root, trigger, modal, form, closeButton, cancelButton, titleInput, categoryInput, descriptionInput };
+}
+
+function ensureContactSupportShell(issueShell) {
+  if (!issueShell?.root || !(issueShell.trigger instanceof HTMLButtonElement)) {
+    return null;
+  }
+
+  let trigger = issueShell.root.querySelector("[data-testid='contact-admin-trigger']");
+  if (!(trigger instanceof HTMLButtonElement)) {
+    trigger = document.createElement("button");
+    trigger.className = "contact-support-trigger";
+    trigger.type = "button";
+    trigger.setAttribute("data-testid", "contact-admin-trigger");
+    trigger.setAttribute("aria-label", "Contact admin");
+    trigger.innerHTML = `
+      <span class="contact-support-trigger-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.78.63 2.62a2 2 0 0 1-.45 2.11L8 9.91a16 16 0 0 0 6.09 6.09l1.46-1.29a2 2 0 0 1 2.11-.45c.84.3 1.72.51 2.62.63A2 2 0 0 1 22 16.92Z" />
+        </svg>
+      </span>
+    `;
+    issueShell.root.insertBefore(trigger, issueShell.trigger);
+  }
+
+  let modal = issueShell.root.querySelector("#contact-admin-modal");
+  if (!(modal instanceof HTMLElement)) {
+    modal = document.createElement("div");
+    modal.id = "contact-admin-modal";
+    modal.className = "admin-modal hidden";
+    modal.setAttribute("aria-hidden", "true");
+    modal.innerHTML = `
+      <div class="admin-modal-backdrop" data-contact-admin-action="close"></div>
+      <div class="admin-modal-dialog admin-card contact-admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="contact-admin-title-heading">
+        <div class="admin-modal-header">
+          <div>
+            <p class="eyebrow">Contact</p>
+            <h3 id="contact-admin-title-heading">Admin contact</h3>
+            <p class="subtle issue-report-copy">Reach the admin directly if you need booking support, event information, or a quick follow-up.</p>
+          </div>
+          <button class="secondary-button" id="contact-admin-close" type="button" data-contact-admin-action="close">Close</button>
+        </div>
+        <section class="contact-admin-card">
+          <p class="eyebrow">Primary admin</p>
+          <h4 class="contact-admin-name">${SUPPORT_CONTACT.name}</h4>
+          <p class="subtle contact-admin-copy">${SUPPORT_CONTACT.note}</p>
+          <div class="contact-admin-list">
+            <a class="contact-admin-link" href="tel:${SUPPORT_CONTACT.phone}">
+              <span>Phone</span>
+              <strong>${SUPPORT_CONTACT.phone}</strong>
+            </a>
+            <a class="contact-admin-link" href="mailto:${SUPPORT_CONTACT.email}">
+              <span>Email</span>
+              <strong>${SUPPORT_CONTACT.email}</strong>
+            </a>
+            <div class="contact-admin-meta">
+              <span>Location</span>
+              <strong>${SUPPORT_CONTACT.location}</strong>
+            </div>
+          </div>
+        </section>
+        <div class="button-row contact-admin-actions">
+          <button class="secondary-button danger-button" id="contact-admin-cancel" type="button" data-contact-admin-action="close">Close</button>
+          <a class="primary-button" href="tel:${SUPPORT_CONTACT.phone}">Call admin</a>
+        </div>
+      </div>
+    `;
+    issueShell.root.appendChild(modal);
+  }
+
+  const closeButton = modal.querySelector("#contact-admin-close");
+  const cancelButton = modal.querySelector("#contact-admin-cancel");
+  if (!(closeButton instanceof HTMLButtonElement) || !(cancelButton instanceof HTMLButtonElement)) {
+    return null;
+  }
+
+  return { trigger, modal, closeButton, cancelButton };
+}
+
+function openContactSupport(contactShell) {
+  if (!contactShell) {
+    return;
+  }
+  contactShell.modal.classList.remove("hidden");
+  contactShell.modal.setAttribute("aria-hidden", "false");
+  syncSharedModalLock();
+}
+
+function closeContactSupport(contactShell) {
+  if (!contactShell) {
+    return;
+  }
+  contactShell.modal.classList.add("hidden");
+  contactShell.modal.setAttribute("aria-hidden", "true");
+  syncSharedModalLock();
+}
+
+function openIssueReporter(shell) {
+  if (!shell) {
+    return;
+  }
+  shell.modal.classList.remove("hidden");
+  shell.modal.setAttribute("aria-hidden", "false");
+  syncSharedModalLock();
+  window.setTimeout(() => {
+    shell.titleInput.focus();
+  }, 50);
+}
+
+function closeIssueReporter(shell, reset = false) {
+  if (!shell) {
+    return;
+  }
+  shell.modal.classList.add("hidden");
+  shell.modal.setAttribute("aria-hidden", "true");
+  if (reset) {
+    shell.form.reset();
+    }
+  syncSharedModalLock();
+}
+
+function setupIssueReporter(user) {
+  const existingRoot = document.querySelector("[data-issue-report-root]");
+  if (user?.role === "admin") {
+    existingRoot?.remove();
+    return null;
+  }
+
+  const shell = ensureIssueReporterShell();
+  if (!shell) {
+    return null;
+  }
+
+  const contactShell = ensureContactSupportShell(shell);
+  if (contactShell && contactShell.trigger.dataset.contactSupportBound !== "true") {
+    contactShell.trigger.addEventListener("click", () => {
+      closeIssueReporter(shell, false);
+      openContactSupport(contactShell);
+    });
+
+    contactShell.closeButton.addEventListener("click", () => {
+      closeContactSupport(contactShell);
+    });
+
+    contactShell.cancelButton.addEventListener("click", () => {
+      closeContactSupport(contactShell);
+    });
+
+    contactShell.modal.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      if (target.dataset.contactAdminAction === "close") {
+        closeContactSupport(contactShell);
+      }
+    });
+
+    contactShell.trigger.dataset.contactSupportBound = "true";
+  }
+
+  if (shell.trigger.dataset.issueReporterBound === "true") {
+    return shell;
+  }
+
+  shell.trigger.addEventListener("click", () => {
+    closeContactSupport(contactShell);
+    openIssueReporter(shell);
+  });
+
+  shell.closeButton.addEventListener("click", () => {
+    closeIssueReporter(shell, true);
+  });
+  shell.cancelButton.addEventListener("click", () => {
+    closeIssueReporter(shell, true);
+  });
+
+  shell.modal.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    if (target.dataset.issueReportAction === "close") {
+      closeIssueReporter(shell, true);
+    }
+  });
+
+  shell.form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!shell.form.reportValidity()) {
+      return;
+    }
+
+    try {
+      await api("/api/me/issues", {
+        method: "POST",
+        body: JSON.stringify({
+          title: shell.titleInput.value.trim(),
+          category: shell.categoryInput.value,
+          description: shell.descriptionInput.value.trim(),
+          page_path: `${window.location.pathname}${window.location.search}`.trim(),
+        }),
+      });
+      closeIssueReporter(shell, true);
+      showToast("Issue report sent to admin.");
+      requestNotificationRefresh();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") {
+      return;
+    }
+    if (contactShell && !contactShell.modal.classList.contains("hidden")) {
+      closeContactSupport(contactShell);
+    }
+    if (!shell.modal.classList.contains("hidden")) {
+      closeIssueReporter(shell, true);
+    }
+  });
+
+  shell.trigger.dataset.issueReporterBound = "true";
+  return shell;
+}
+
 export function setupAccountMenu(user) {
   const notificationShell = setupNotificationMenu();
+  setupIssueReporter(user);
   const trigger = document.querySelector("[data-testid='account-trigger']");
   const menu = document.querySelector("[data-testid='account-menu']");
   const avatar = document.querySelector("[data-testid='account-avatar']");
@@ -934,3 +1245,10 @@ export function setupGlobalFooter(user) {
     }
   });
 }
+
+
+
+
+
+
+

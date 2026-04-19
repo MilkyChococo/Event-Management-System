@@ -94,7 +94,7 @@ function renderEventList() {
     .map((event) => {
       const registerButton = state.user
         ? event.is_registered
-          ? `<button type="button" class="ghost js-cancel" data-id="${event.id}">Cancel</button>`
+          ? `<button type="button" class="ghost js-cancel danger-button" data-id="${event.id}">Cancel</button>`
           : `<button type="button" class="js-register" data-id="${event.id}" ${event.seats_left === 0 ? "disabled" : ""}>Register</button>`
         : `<button type="button" class="ghost" disabled>Login required</button>`;
 

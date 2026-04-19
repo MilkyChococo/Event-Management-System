@@ -34,6 +34,7 @@ NOTIFICATION_RETENTION = timedelta(days=5)
 APPROVAL_APPROVED = "approved"
 APPROVAL_PENDING = "pending"
 APPROVAL_REJECTED = "rejected"
+ESCROW_RELEASE_HOLD = timedelta(hours=24)
 
 
 def normalize_event_images(image_urls: list[str] | None = None, image_url: str | None = None) -> list[str]:
@@ -668,6 +669,139 @@ class EventRegistrationService:
             ticket_label=str(registration.get("ticket_label") or ""),
         )
 
+    def _event_escrow_balance(self, event_document: dict[str, Any] | None) -> float:
+        if not event_document:
+            return 0.0
+        try:
+            return round(max(float(event_document.get("escrow_balance", 0) or 0), 0), 2)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _event_payout_release_at(self, event_document: dict[str, Any]) -> datetime:
+        start_at = event_document.get("start_at") or utc_now()
+        try:
+            return parse_utc_timestamp(start_at) + ESCROW_RELEASE_HOLD
+        except Exception:
+            return datetime.max.replace(tzinfo=timezone.utc)
+
+    def _event_payout_is_due(self, event_document: dict[str, Any], now_dt: datetime | None = None) -> bool:
+        now_reference = now_dt or datetime.now(timezone.utc)
+        return now_reference >= self._event_payout_release_at(event_document)
+
+    def _credit_event_escrow(self, event_id: int, amount: float) -> None:
+        normalized_amount = round(max(float(amount or 0), 0), 2)
+        if normalized_amount <= 0:
+            return
+        self.db.events.update_one(
+            {"id": int(event_id)},
+            {
+                "$inc": {
+                    "escrow_balance": normalized_amount,
+                    "escrow_collected_total": normalized_amount,
+                },
+                "$set": {
+                    "payout_status": "holding",
+                    "updated_at": utc_now(),
+                },
+            },
+        )
+
+    def _debit_event_escrow(self, event_id: int, amount: float) -> None:
+        normalized_amount = round(max(float(amount or 0), 0), 2)
+        if normalized_amount <= 0:
+            return
+        event_document = self.db.events.find_one({"id": int(event_id)})
+        if not event_document:
+            return
+        current_escrow = self._event_escrow_balance(event_document)
+        if current_escrow <= 0:
+            return
+
+        next_escrow = round(max(current_escrow - normalized_amount, 0), 2)
+        owner_payout_total = round(max(float(event_document.get("owner_payout_total", 0) or 0), 0), 2)
+        if next_escrow > 0:
+            payout_status = "holding"
+        elif owner_payout_total > 0:
+            payout_status = "paid"
+        else:
+            payout_status = "idle"
+
+        self.db.events.update_one(
+            {"id": int(event_id)},
+            {
+                "$set": {
+                    "escrow_balance": next_escrow,
+                    "payout_status": payout_status,
+                    "updated_at": utc_now(),
+                }
+            },
+        )
+
+    def _settle_event_escrow(self, event_document: dict[str, Any]) -> None:
+        event_id = int(event_document.get("id") or 0)
+        owner_id = int(event_document.get("created_by") or 0)
+        payout_amount = self._event_escrow_balance(event_document)
+        if not event_id or not owner_id or payout_amount <= 0:
+            return
+
+        owner_document = self.db.users.find_one({"id": owner_id})
+        if not owner_document:
+            return
+
+        updated_owner = self.db.users.find_one_and_update(
+            {"id": owner_id},
+            {
+                "$inc": {"balance": payout_amount},
+                "$set": {"updated_at": utc_now()},
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+        if not updated_owner:
+            return
+
+        updated_wallet = self._normalize_wallet_profile(updated_owner)
+        event_title = str(event_document.get("title") or "your event")
+        self._record_wallet_transaction(
+            user_id=owner_id,
+            kind="event_payout",
+            amount=payout_amount,
+            balance_delta=payout_amount,
+            balance_after=updated_wallet["balance"],
+            note=f"Escrow payout for {event_title}",
+            event_id=event_id,
+        )
+        self.db.events.update_one(
+            {"id": event_id},
+            {
+                "$set": {
+                    "escrow_balance": 0.0,
+                    "payout_status": "paid",
+                    "owner_payout_last_at": utc_now(),
+                    "updated_at": utc_now(),
+                },
+                "$inc": {"owner_payout_total": payout_amount},
+            },
+        )
+        self._create_notification(
+            owner_id,
+            "event_payout",
+            "Event payout completed",
+            f'Escrow payout of ${payout_amount:.2f} was released for "{event_title}".',
+            "/activity",
+            action_label="View activity",
+        )
+
+    def _settle_due_event_escrow(self, owner_id: int | None = None) -> None:
+        query: dict[str, Any] = {"escrow_balance": {"$gt": 0}}
+        if owner_id is not None:
+            query["created_by"] = int(owner_id)
+        now_dt = datetime.now(timezone.utc)
+        for event_document in self.db.events.find(query):
+            if str(event_document.get("approval_status") or APPROVAL_APPROVED).strip().lower() != APPROVAL_APPROVED:
+                continue
+            if self._event_payout_is_due(event_document, now_dt):
+                self._settle_event_escrow(event_document)
+
 
     def _serialize_user(self, document: dict[str, Any]) -> dict[str, Any]:
         normalized_profile = self._normalize_user_profile(document)
@@ -702,6 +836,11 @@ class EventRegistrationService:
             "contact_email": SUPPORT_EMAIL,
             "contact_phone": SUPPORT_PHONE,
             "ticket_types": normalize_ticket_types(document.get("ticket_types"), price),
+            "escrow_balance": 0.0,
+            "escrow_collected_total": 0.0,
+            "owner_payout_total": 0.0,
+            "owner_payout_last_at": None,
+            "payout_status": "idle",
         }
         if title == "AI Career Night":
             defaults.update(
@@ -793,6 +932,20 @@ class EventRegistrationService:
         normalized["check_in_policy"] = str(normalized.get("check_in_policy") or defaults["check_in_policy"]).strip()
         normalized["contact_email"] = str(normalized.get("contact_email") or defaults["contact_email"]).strip().lower()
         normalized["contact_phone"] = str(normalized.get("contact_phone") or defaults["contact_phone"]).strip()
+        normalized["escrow_balance"] = round(max(float(normalized.get("escrow_balance", 0) or 0), 0), 2)
+        normalized["escrow_collected_total"] = round(max(float(normalized.get("escrow_collected_total", 0) or 0), 0), 2)
+        normalized["owner_payout_total"] = round(max(float(normalized.get("owner_payout_total", 0) or 0), 0), 2)
+        normalized["owner_payout_last_at"] = (
+            str(normalized.get("owner_payout_last_at") or "").strip() or None
+        )
+        payout_status = str(normalized.get("payout_status") or "idle").strip().lower()
+        if payout_status not in {"idle", "holding", "paid"}:
+            payout_status = "idle"
+        if normalized["escrow_balance"] > 0 and payout_status == "idle":
+            payout_status = "holding"
+        if normalized["escrow_balance"] <= 0 and normalized["owner_payout_total"] > 0:
+            payout_status = "paid"
+        normalized["payout_status"] = payout_status
         normalized["approval_status"] = str(normalized.get("approval_status") or APPROVAL_APPROVED).strip().lower()
         if normalized["approval_status"] not in {APPROVAL_APPROVED, APPROVAL_PENDING, APPROVAL_REJECTED}:
             normalized["approval_status"] = APPROVAL_APPROVED
@@ -963,6 +1116,20 @@ class EventRegistrationService:
             "link": str(document.get("link") or ""),
             "action_label": str(document.get("action_label") or "").strip() or None,
             "is_read": bool(document.get("read_at")),
+            "created_at": str(document.get("created_at") or utc_now()),
+        }
+
+    def _serialize_issue_report(self, document: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id": int(document["id"]),
+            "user_id": int(document["user_id"]),
+            "user_name": str(document.get("user_name") or "User"),
+            "user_email": str(document.get("user_email") or ""),
+            "title": str(document.get("title") or "Issue report"),
+            "category": str(document.get("category") or "General"),
+            "description": str(document.get("description") or ""),
+            "page_path": str(document.get("page_path") or "/dashboard"),
+            "status": str(document.get("status") or "open"),
             "created_at": str(document.get("created_at") or utc_now()),
         }
 
@@ -1262,15 +1429,21 @@ class EventRegistrationService:
         if len(new_password) < 8:
             raise ServiceError(422, "WEAK_PASSWORD", "Password must contain at least 8 characters.")
 
-        result = self.db.users.update_one(
+        document = self.db.users.find_one(
             {
                 "email": email.strip().lower(),
                 "date_of_birth": date_of_birth.strip(),
-            },
-            {"$set": {"password_hash": hash_password(new_password)}},
+            }
         )
-        if result.matched_count == 0:
+        if not document:
             raise ServiceError(404, "PROFILE_NOT_FOUND", "No account matched the provided recovery information.")
+        if verify_password(new_password, document["password_hash"]):
+            raise ServiceError(409, "PASSWORD_UNCHANGED", "New password must be different from the current password.")
+
+        self.db.users.update_one(
+            {"id": int(document["id"])},
+            {"$set": {"password_hash": hash_password(new_password), "updated_at": utc_now()}},
+        )
 
     def create_session(self, user_id: int) -> str:
         for _ in range(5):
@@ -1346,6 +1519,8 @@ class EventRegistrationService:
             raise ServiceError(401, "INVALID_CREDENTIALS", "Current password is incorrect.")
         if len(new_password) < 8:
             raise ServiceError(422, "WEAK_PASSWORD", "Password must contain at least 8 characters.")
+        if verify_password(new_password, document["password_hash"]):
+            raise ServiceError(409, "PASSWORD_UNCHANGED", "New password must be different from the current password.")
 
         updated = self.db.users.find_one_and_update(
             {"id": user_id},
@@ -1357,12 +1532,14 @@ class EventRegistrationService:
         return self._serialize_user(updated)
 
     def list_wallet_transactions(self, user_id: int) -> list[dict[str, Any]]:
+        self._settle_due_event_escrow(owner_id=user_id)
         if not self.db.users.find_one({"id": user_id}):
             raise ServiceError(404, "ACCOUNT_NOT_FOUND", "Account does not exist.")
         transactions = self.db.wallet_transactions.find({"user_id": user_id}).sort([("created_at", -1)])
         return [self._serialize_wallet_transaction(document) for document in transactions]
 
     def get_wallet_overview(self, user_id: int) -> dict[str, Any]:
+        self._settle_due_event_escrow(owner_id=user_id)
         user_document = self.db.users.find_one({"id": user_id})
         if not user_document:
             raise ServiceError(404, "ACCOUNT_NOT_FOUND", "Account does not exist.")
@@ -1457,6 +1634,7 @@ class EventRegistrationService:
 
 
     def list_owned_events(self, user_id: int) -> list[dict[str, Any]]:
+        self._settle_due_event_escrow(owner_id=user_id)
         if not self.db.users.find_one({"id": user_id}):
             raise ServiceError(404, "ACCOUNT_NOT_FOUND", "Account does not exist.")
 
@@ -1475,6 +1653,46 @@ class EventRegistrationService:
             self._serialize_event(document, registration_counts.get(document["id"], 0), False)
             for document in events
         ]
+
+    def _get_owned_event_document(self, user_id: int, event_id: int) -> dict[str, Any]:
+        if not self.db.users.find_one({"id": user_id}):
+            raise ServiceError(404, "ACCOUNT_NOT_FOUND", "Account does not exist.")
+        document = self.db.events.find_one({"id": event_id, "created_by": user_id})
+        if not document:
+            raise ServiceError(404, "EVENT_NOT_FOUND", "Owned event not found.")
+        return document
+
+    def get_owned_event_management(self, user_id: int, event_id: int) -> dict[str, Any]:
+        self._settle_due_event_escrow(owner_id=user_id)
+        self._get_owned_event_document(user_id, event_id)
+        registrations = list(self.db.registrations.find({**self._active_registration_query(), "event_id": event_id}).sort("registered_at", ASCENDING))
+        user_ids = sorted({int(registration["user_id"]) for registration in registrations})
+        users = {document["id"]: document for document in self.db.users.find({"id": {"$in": user_ids}})}
+        serialized_registrations = [
+            {
+                "user_id": int(registration["user_id"]),
+                "name": str(registration.get("attendee_name") or users[registration["user_id"]].get("name") or "Guest"),
+                "email": str(registration.get("attendee_email") or users[registration["user_id"]].get("email") or ""),
+                "phone": str(registration.get("attendee_phone") or self._normalize_user_profile(users[registration["user_id"]])["phone_number"]),
+                "registered_at": str(registration.get("registered_at") or registration.get("created_at") or utc_now()),
+                "ticket_label": str(registration.get("ticket_label") or "General Admission"),
+                "quantity": self._registration_quantity(registration),
+                "total_price": self._registration_total_price(registration),
+                "status": str(registration.get("status") or "confirmed"),
+            }
+            for registration in registrations
+            if registration["user_id"] in users
+        ]
+        ticket_count = self._sum_registration_quantities(registrations)
+        return {
+            "event": self.get_event(event_id, user_id=user_id),
+            "summary": {
+                "attendee_count": len(serialized_registrations),
+                "ticket_count": ticket_count,
+                "total_revenue": round(sum(self._registration_total_price(registration) for registration in registrations), 2),
+            },
+            "registrations": serialized_registrations,
+        }
 
     def list_admin_events(self) -> list[dict[str, Any]]:
         active_query = self._active_registration_query()
@@ -1666,6 +1884,70 @@ class EventRegistrationService:
                 "/admin/manager",
             )
 
+    def remove_owned_event_registration(self, user_id: int, event_id: int, registration_user_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        event_document = self._get_owned_event_document(user_id, event_id)
+        event_title = str(event_document.get("title") or "your event")
+        reason = str(payload.get("reason") or "").strip()
+        refund_note = str(payload.get("refund_note") or "").strip()
+        cancelled_at = utc_now()
+        cancelled = self.db.registrations.find_one_and_update(
+            {**self._active_registration_query(), "user_id": int(registration_user_id), "event_id": event_id},
+            {
+                "$set": {
+                    "status": "cancelled",
+                    "cancelled_at": cancelled_at,
+                    "cancelled_by": "owner",
+                    "cancelled_by_owner_id": int(user_id),
+                    "cancellation_reason": reason,
+                    "refund_note": refund_note,
+                }
+            },
+            return_document=ReturnDocument.BEFORE,
+        )
+        if not cancelled:
+            raise ServiceError(404, "REGISTRATION_NOT_FOUND", "Registration not found.")
+
+        quantity = self._registration_quantity(cancelled)
+        self.db.events.update_one(
+            {"id": event_id, "registered_count": {"$gte": quantity}},
+            {"$inc": {"registered_count": -quantity}},
+        )
+        self._debit_event_escrow(event_id, self._registration_total_price(cancelled))
+        refund_transaction = self._refund_registration_charge(int(registration_user_id), cancelled, event_title)
+        self.db.registrations.update_one(
+            {"_id": cancelled["_id"]},
+            {
+                "$set": {
+                    "refund_amount": float(refund_transaction["amount"]) if refund_transaction else 0.0,
+                    "refund_transaction_at": refund_transaction.get("created_at") if refund_transaction else None,
+                }
+            },
+        )
+
+        attendee_document = self.db.users.find_one({"id": int(registration_user_id)})
+        attendee_name = str(cancelled.get("attendee_name") or (attendee_document.get("name") if attendee_document else "Registrant"))
+        refund_amount = float(refund_transaction["amount"]) if refund_transaction else 0.0
+        refund_summary = f" Refund: {refund_amount:.2f}."
+        if refund_note:
+            refund_summary += f" {refund_note}"
+        self._create_notification(
+            int(registration_user_id),
+            "reservation_removed",
+            "Reservation removed by organizer",
+            f'Your reservation for "{event_title}" was removed. Reason: {reason}.{refund_summary}',
+            "/activity",
+            action_label="View activity",
+        )
+        self._create_notification(
+            int(user_id),
+            "registration_removed",
+            "Registrant removed",
+            f'{attendee_name} was removed from "{event_title}". Refund processed: {refund_amount:.2f}.',
+            f"/events/{event_id}/view",
+            action_label="View detail",
+        )
+        return self.get_owned_event_management(user_id, event_id)
+
     def approve_event_request(self, event_id: int) -> dict[str, Any]:
         current = self.db.events.find_one({"id": event_id})
         if not current:
@@ -1754,6 +2036,55 @@ class EventRegistrationService:
         )
         return {"message": "Notifications marked as read."}
 
+    def create_issue_report(self, user_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        user_document = self.db.users.find_one({"id": int(user_id)})
+        if not user_document:
+            raise ServiceError(404, "ACCOUNT_NOT_FOUND", "Account does not exist.")
+
+        title = str(payload.get("title") or "").strip()
+        category = str(payload.get("category") or "General").strip() or "General"
+        description = str(payload.get("description") or "").strip()
+        page_path = str(payload.get("page_path") or "/dashboard").strip() or "/dashboard"
+        if not page_path.startswith("/"):
+            page_path = f"/{page_path.lstrip('/')}"
+
+        document = {
+            "id": self.db.next_sequence("issue_reports"),
+            "user_id": int(user_id),
+            "user_name": str(user_document.get("name") or "User"),
+            "user_email": str(user_document.get("email") or ""),
+            "title": title,
+            "category": category,
+            "description": description,
+            "page_path": page_path,
+            "status": "open",
+            "created_at": utc_now(),
+        }
+        self.db.issue_reports.insert_one(document)
+
+        self._create_notification(
+            int(user_id),
+            "issue_sent",
+            "Issue report sent",
+            f'Your issue "{title}" was sent to admin for review.',
+            page_path,
+        )
+        for admin_user_id in self._list_admin_user_ids():
+            self._create_notification(
+                admin_user_id,
+                "issue_reported",
+                "New issue report",
+                f'{document["user_name"]} reported "{title}" from {page_path}.',
+                "/admin/analytics",
+                action_label="Review",
+            )
+
+        return self._serialize_issue_report(document)
+
+    def list_issue_reports(self) -> list[dict[str, Any]]:
+        documents = self.db.issue_reports.find({}, sort=[("created_at", DESCENDING), ("id", DESCENDING)])
+        return [self._serialize_issue_report(document) for document in documents]
+
     def list_events(self, user_id: int | None = None) -> list[dict[str, Any]]:
         active_registrations = list(self.db.registrations.find(self._active_registration_query(), {"_id": 0, "event_id": 1, "user_id": 1, "quantity": 1}))
         registration_counts: dict[int, int] = {}
@@ -1777,6 +2108,8 @@ class EventRegistrationService:
 
 
     def get_event(self, event_id: int, user_id: int | None = None) -> dict[str, Any]:
+        if user_id is not None:
+            self._settle_due_event_escrow(owner_id=user_id)
         document = self.db.events.find_one({"id": event_id})
         if not document or not self._can_view_event(document, user_id):
             raise ServiceError(404, "EVENT_NOT_FOUND", "Event not found.")
@@ -2046,6 +2379,7 @@ class EventRegistrationService:
             self._refund_registration_charge(user_id, registration_document, event["title"])
             raise ServiceError(409, "ALREADY_REGISTERED", "User already registered for this event.") from exc
 
+        self._credit_event_escrow(event_id, total_charge)
         return self.get_event(event_id, user_id=user_id)
 
 
@@ -2065,6 +2399,7 @@ class EventRegistrationService:
         )
         event_document = self.db.events.find_one({"id": event_id})
         event_title = str(event_document.get("title") or "") if event_document else ""
+        self._debit_event_escrow(event_id, self._registration_total_price(cancelled))
         self._refund_registration_charge(user_id, cancelled, event_title)
         return self.get_event(event_id, user_id=user_id)
 

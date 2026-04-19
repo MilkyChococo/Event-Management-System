@@ -13,7 +13,7 @@ import {
   setupGlobalFooter,
   showToast,
   toDatetimeLocal,
-} from "/static/shared.js?v=20260328-notification-reminder-cta";
+} from "/static/shared.js?v=20260406-contact-stack-fab";
 
 const DEFAULT_EVENT_IMAGE = "/static/images/default-event.svg";
 
@@ -880,4 +880,5 @@ async function boot() {
 }
 
 boot();
+
 

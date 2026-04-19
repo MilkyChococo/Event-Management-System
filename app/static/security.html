@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Security | EventHub Verify</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260328-notification-reminder-cta" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260406-contact-stack-fab" />
   </head>
   <body>
     <div class="app-shell">
@@ -46,25 +46,11 @@
           <div class="section-heading">
             <div>
               <p class="eyebrow">Security &amp; Privacy</p>
-              <h2>Password reset, privacy notes, and account terms</h2>
+              <h2>Terms, privacy notes, and password policy</h2>
             </div>
           </div>
           <div class="wallet-panel-grid security-panel-grid">
-            <section class="admin-card security-card">
-              <p class="subtle">Reset your password here when you want to protect the account from unauthorized access.</p>
-              <form id="security-form" class="form-grid">
-                <label>
-                  Current password
-                  <input id="security-current-password" type="password" minlength="8" required />
-                </label>
-                <label>
-                  New password
-                  <input id="security-new-password" type="password" minlength="8" required />
-                </label>
-                <button class="primary-button" id="security-submit" type="submit">Reset password</button>
-              </form>
-            </section>
-            <section class="admin-card privacy-card">
+            <section class="admin-card privacy-card privacy-card-wide">
               <div class="section-heading compact-heading">
                 <div>
                   <p class="eyebrow">Terms &amp; Privacy</p>
@@ -81,6 +67,10 @@
                   <strong>Event reservations deduct only your balance. If the balance is not enough, top up first and try again.</strong>
                 </article>
                 <article class="profile-field">
+                  <span>Password changes</span>
+                  <strong>If you want to update your password, click <button class="policy-inline-link policy-inline-button" id="security-change-password-link" type="button">Change password</button>.</strong>
+                </article>
+                <article class="profile-field">
                   <span>Security</span>
                   <strong>Use a strong password and update it immediately if you suspect account access from someone else.</strong>
                 </article>
@@ -89,11 +79,58 @@
           </div>
         </section>
       </main>
+
+      <div id="security-password-modal" class="admin-modal hidden" aria-hidden="true">
+        <div class="admin-modal-backdrop" data-security-password-action="close"></div>
+        <div class="admin-modal-dialog admin-card security-password-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="security-password-title">
+          <div class="admin-modal-header">
+            <div>
+              <p class="eyebrow">Password changes</p>
+              <h3 id="security-password-title">Change password</h3>
+              <p class="subtle security-modal-copy">Enter your current password and your new password here. When you press Enter, the system will ask for one final confirmation.</p>
+            </div>
+            <button class="secondary-button" id="security-password-close" type="button" data-security-password-action="close">Close</button>
+          </div>
+          <form id="security-password-form" class="form-grid admin-modal-form">
+            <label>
+              Current password
+              <input id="security-current-password" type="password" minlength="8" autocomplete="current-password" required />
+            </label>
+            <label>
+              New password
+              <input id="security-new-password" type="password" minlength="8" autocomplete="new-password" required />
+            </label>
+            <div class="button-row security-modal-actions">
+              <button class="secondary-button danger-button" id="security-password-cancel" type="button" data-security-password-action="close">Cancel</button>
+              <button class="primary-button" id="security-password-enter" type="submit">Enter</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div id="security-password-confirm-modal" class="admin-modal hidden" aria-hidden="true">
+        <div class="admin-modal-backdrop" data-security-confirm-action="close"></div>
+        <div class="admin-modal-dialog admin-card security-password-confirm-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="security-password-confirm-title">
+          <div class="admin-modal-header">
+            <div>
+              <p class="eyebrow">Confirmation</p>
+              <h3 id="security-password-confirm-title">Are you sure you want to continue?</h3>
+              <p class="subtle security-modal-copy">You are about to update your account password. Please confirm before the system sends the change request.</p>
+            </div>
+            <button class="secondary-button" id="security-password-confirm-close" type="button" data-security-confirm-action="close">Close</button>
+          </div>
+          <div class="button-row security-modal-actions">
+            <button class="secondary-button danger-button" id="security-password-confirm-cancel" type="button" data-security-confirm-action="close">Cancel</button>
+            <button class="primary-button" id="security-password-confirm-go" type="button">Change password</button>
+          </div>
+        </div>
+      </div>
       <div class="global-footer-host" data-global-footer-host></div>
     </div>
 
-    <script type="module" src="/static/security.js?v=20260328-notification-reminder-cta"></script>
+    <script type="module" src="/static/security.js?v=20260406-issue-report-fab"></script>
   </body>
 </html>
+
 
 

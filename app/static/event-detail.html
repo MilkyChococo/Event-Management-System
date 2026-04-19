@@ -4,13 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Event Detail | EventHub Verify</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260328-notification-reminder-cta" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260419-owner-blocks" />
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar">
         <div class="topbar-actions left-actions">
-          <a class="secondary-link" href="/dashboard">&#8592; Back to dashboard</a>
+          <a id="detail-back-link" class="secondary-link" href="/dashboard">&#8592; Back to dashboard</a>
         </div>
         <div class="topbar-actions">
           <div class="account-anchor">
@@ -140,9 +140,24 @@
 
             <div class="button-row detail-actions">
               <button id="detail-register" class="primary-button" data-testid="detail-register" type="button">Reserve your seat</button>
-              <button id="detail-cancel" class="secondary-button hidden" data-testid="detail-cancel" type="button">Cancel reservation</button>
+              <button id="detail-cancel" class="secondary-button danger-button hidden" data-testid="detail-cancel" type="button">Cancel</button>
             </div>
           </article>
+        </section>
+
+        <section id="detail-owner-section" class="page-section detail-owner-section hidden" data-testid="detail-owner-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Owner View</p>
+              <h2>Registration dashboard</h2>
+              <p class="subtle">Track each booking, revenue already received, and remove a registrant with refund notes when needed.</p>
+            </div>
+          </div>
+
+          <div id="detail-owner-summary" class="detail-owner-summary"></div>
+          <div id="detail-owner-list" class="detail-owner-registration-list">
+            <p class="subtle">Loading registration data...</p>
+          </div>
         </section>
 
         <section id="detail-attendee-section" class="page-section hidden" data-testid="detail-attendee-section">
@@ -195,7 +210,7 @@
             </div>
             <div class="button-row detail-registration-actions">
               <button class="primary-button" id="detail-registration-submit" type="submit">Confirm reservation</button>
-              <button class="secondary-button" id="detail-registration-cancel" type="button">Cancel</button>
+              <button class="secondary-button danger-button" id="detail-registration-cancel" type="button">Cancel</button>
             </div>
           </form>
 
@@ -207,9 +222,41 @@
       </div>
     </div>
 
-    <script type="module" src="/static/event-detail.js?v=20260328-notification-reminder-cta"></script>
+    <div id="detail-owner-remove-modal" class="admin-modal hidden" data-testid="detail-owner-remove-modal" aria-hidden="true">
+      <div class="admin-modal-backdrop" data-action="close-owner-remove"></div>
+      <div class="admin-modal-dialog admin-card" role="dialog" aria-modal="true" aria-labelledby="detail-owner-remove-title">
+        <div class="admin-modal-header">
+          <div>
+            <p class="eyebrow">Owner action</p>
+            <h3 id="detail-owner-remove-title">Remove registrant</h3>
+            <p class="subtle">Record the reason and refund note before removing this registrant from your event.</p>
+          </div>
+          <button class="secondary-button" id="detail-owner-remove-close" type="button">Close</button>
+        </div>
+
+        <form id="detail-owner-remove-form" class="form-grid admin-modal-form">
+          <div id="detail-owner-remove-target" class="detail-owner-remove-target"></div>
+          <label>
+            Reason
+            <textarea id="detail-owner-remove-reason" rows="4" required></textarea>
+          </label>
+          <label>
+            Refund info
+            <textarea id="detail-owner-remove-refund" rows="4" placeholder="Full refund to wallet, expected processing note, or no-refund explanation."></textarea>
+          </label>
+          <div class="button-row admin-modal-actions">
+            <button class="primary-button" type="submit">Remove registrant</button>
+            <button class="secondary-button danger-button" id="detail-owner-remove-cancel" type="button">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script type="module" src="/static/event-detail.js?v=20260419-owner-management"></script>
   </body>
 </html>
+
+
 
 
 

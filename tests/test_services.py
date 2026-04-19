@@ -249,6 +249,111 @@ class EventRegistrationServiceTests(unittest.TestCase):
         refunded_user = self.service.authenticate("student@example.com", "Student123!")
         self.assertAlmostEqual(refunded_user["balance"], before["balance"])
 
+    def test_registration_money_is_held_in_escrow_until_owner_payout_window(self) -> None:
+        guest = self.service.register_user(
+            "Escrow Guest",
+            "escrow.guest@example.com",
+            "Password123!",
+            "2004-10-01",
+            "Vietnam",
+            "Ho Chi Minh City",
+            "District 5",
+            "Ward 8",
+            "88 Tran Hung Dao",
+            "+84",
+            "Vietnam",
+            "vn",
+            "934112233",
+        )
+        owned_event = self.service.create_owned_event(
+            self.student["id"],
+            {
+                "title": "Escrow Hold Demo",
+                "description": "Verify that registration money stays in escrow before payout.",
+                "category": "Community",
+                "location": "Escrow Hall",
+                "start_at": "2026-07-20T18:00:00",
+                "capacity": 30,
+                "price": 10,
+            },
+        )
+        self.service.approve_event_request(owned_event["id"])
+
+        owner_before = self.service.authenticate("student@example.com", "Student123!")
+        self.service.register_for_event(guest["id"], owned_event["id"], {"quantity": 2})
+        owner_after_registration = self.service.authenticate("student@example.com", "Student123!")
+        self.assertAlmostEqual(owner_after_registration["balance"], owner_before["balance"])
+
+        event_after_registration = self.db.events.find_one({"id": owned_event["id"]})
+        self.assertAlmostEqual(float(event_after_registration.get("escrow_balance", 0) or 0), 20.0)
+        self.assertEqual(str(event_after_registration.get("payout_status") or ""), "holding")
+
+        self.service.cancel_registration(guest["id"], owned_event["id"])
+        event_after_cancel = self.db.events.find_one({"id": owned_event["id"]})
+        self.assertAlmostEqual(float(event_after_cancel.get("escrow_balance", 0) or 0), 0.0)
+        self.assertEqual(str(event_after_cancel.get("payout_status") or ""), "idle")
+
+    def test_owner_receives_escrow_payout_after_safety_window(self) -> None:
+        guest = self.service.register_user(
+            "Payout Guest",
+            "payout.guest@example.com",
+            "Password123!",
+            "2004-10-02",
+            "Vietnam",
+            "Ho Chi Minh City",
+            "District 10",
+            "Ward 3",
+            "99 Nguyen Tri Phuong",
+            "+84",
+            "Vietnam",
+            "vn",
+            "934223344",
+        )
+        owned_event = self.service.create_owned_event(
+            self.student["id"],
+            {
+                "title": "Escrow Payout Demo",
+                "description": "Verify owner payout release after event safety window.",
+                "category": "Community",
+                "location": "Payout Hall",
+                "start_at": "2026-07-21T18:00:00",
+                "capacity": 20,
+                "price": 12,
+            },
+        )
+        self.service.approve_event_request(owned_event["id"])
+        self.service.register_for_event(guest["id"], owned_event["id"], {"quantity": 1})
+
+        owner_before = self.service.authenticate("student@example.com", "Student123!")
+        overview_before_window = self.service.get_wallet_overview(self.student["id"])
+        self.assertFalse(any(item["kind"] == "event_payout" for item in overview_before_window["transactions"]))
+
+        past_start = (datetime.now(timezone.utc) - timedelta(days=3)).replace(microsecond=0).isoformat()
+        self.db.events.update_one({"id": owned_event["id"]}, {"$set": {"start_at": past_start}})
+
+        overview_after_window = self.service.get_wallet_overview(self.student["id"])
+        self.assertTrue(any(item["kind"] == "event_payout" for item in overview_after_window["transactions"]))
+
+        owner_after = self.service.authenticate("student@example.com", "Student123!")
+        self.assertAlmostEqual(owner_after["balance"], owner_before["balance"] + 12.0)
+
+        event_after_payout = self.db.events.find_one({"id": owned_event["id"]})
+        self.assertAlmostEqual(float(event_after_payout.get("escrow_balance", 0) or 0), 0.0)
+        self.assertAlmostEqual(float(event_after_payout.get("owner_payout_total", 0) or 0), 12.0)
+        self.assertEqual(str(event_after_payout.get("payout_status") or ""), "paid")
+
+    def test_change_password_rejects_same_as_current_password(self) -> None:
+        with self.assertRaises(ServiceError) as context:
+            self.service.change_password(self.student["id"], "Student123!", "Student123!")
+
+        self.assertEqual(context.exception.code, "PASSWORD_UNCHANGED")
+
+    def test_reset_password_rejects_same_as_current_password(self) -> None:
+        with self.assertRaises(ServiceError) as context:
+            self.service.reset_password("student@example.com", "2005-08-20", "Student123!")
+
+        self.assertEqual(context.exception.code, "PASSWORD_UNCHANGED")
+
     def test_user_can_update_owned_event(self) -> None:
         created = self.service.create_owned_event(
             self.student["id"],
@@ -308,6 +413,82 @@ class EventRegistrationServiceTests(unittest.TestCase):
         self.service.delete_owned_event(self.student["id"], created["id"])
         owned_events_after_delete = self.service.list_owned_events(self.student["id"])
         self.assertFalse(any(event["id"] == created["id"] for event in owned_events_after_delete))
+
+    def test_owner_can_view_registration_dashboard_and_remove_registrant(self) -> None:
+        guest = self.service.register_user(
+            "Owner Dashboard Guest",
+            "owner.dashboard.guest@example.com",
+            "Password123!",
+            "2004-09-01",
+            "Vietnam",
+            "Ho Chi Minh City",
+            "District 3",
+            "Ward 6",
+            "44 Nguyen Dinh Chieu",
+            "+84",
+            "Vietnam",
+            "vn",
+            "912222333",
+        )
+        created = self.service.create_owned_event(
+            self.student["id"],
+            {
+                "title": "Owner Managed Event",
+                "description": "Owner-managed event used to verify attendee dashboard actions.",
+                "category": "Community",
+                "location": "Innovation Hub",
+                "start_at": "2026-06-02T18:00:00",
+                "capacity": 25,
+                "price": 15,
+            },
+        )
+        self.service.approve_event_request(created["id"])
+
+        guest_before = self.service.authenticate("owner.dashboard.guest@example.com", "Password123!")
+        self.service.register_for_event(
+            guest["id"],
+            created["id"],
+            {
+                "quantity": 2,
+                "attendee_name": "Owner Dashboard Guest",
+                "attendee_email": "owner.dashboard.guest@example.com",
+                "attendee_phone": "+84 912222333",
+            },
+        )
+        guest_after_charge = self.service.authenticate("owner.dashboard.guest@example.com", "Password123!")
+        self.assertLess(guest_after_charge["balance"], guest_before["balance"])
+
+        management = self.service.get_owned_event_management(self.student["id"], created["id"])
+        self.assertEqual(management["summary"]["attendee_count"], 1)
+        self.assertEqual(management["summary"]["ticket_count"], 2)
+        self.assertEqual(management["summary"]["total_revenue"], 30.0)
+        self.assertEqual(management["registrations"][0]["ticket_label"], "General Admission")
+        event_after_register = self.db.events.find_one({"id": created["id"]})
+        self.assertAlmostEqual(float(event_after_register.get("escrow_balance", 0) or 0), 30.0)
+
+        updated_management = self.service.remove_owned_event_registration(
+            self.student["id"],
+            created["id"],
+            guest["id"],
+            {
+                "reason": "Duplicate payment detected",
+                "refund_note": "Full refund returned to attendee wallet.",
+            },
+        )
+        self.assertEqual(updated_management["summary"]["attendee_count"], 0)
+        self.assertEqual(updated_management["summary"]["ticket_count"], 0)
+        self.assertEqual(updated_management["summary"]["total_revenue"], 0.0)
+
+        refreshed_guest = self.service.authenticate("owner.dashboard.guest@example.com", "Password123!")
+        self.assertAlmostEqual(refreshed_guest["balance"], guest_before["balance"])
+
+        registration = self.db.registrations.find_one({"user_id": guest["id"], "event_id": created["id"]})
+        self.assertIsNotNone(registration)
+        self.assertEqual(registration["status"], "cancelled")
+        self.assertEqual(registration["cancellation_reason"], "Duplicate payment detected")
+        self.assertEqual(registration["refund_note"], "Full refund returned to attendee wallet.")
+        event_after_remove = self.db.events.find_one({"id": created["id"]})
+        self.assertAlmostEqual(float(event_after_remove.get("escrow_balance", 0) or 0), 0.0)
 
     def test_user_event_request_stays_hidden_until_admin_approval(self) -> None:
         created = self.service.create_owned_event(
@@ -438,6 +619,28 @@ class EventRegistrationServiceTests(unittest.TestCase):
         self.service.delete_owned_event(self.student["id"], created["id"])
         student_notifications_after_delete = self.service.list_notifications(self.student["id"])
         self.assertTrue(any(item["kind"] == "request_deleted" for item in student_notifications_after_delete["items"]))
+
+    def test_issue_report_creates_record_and_admin_notification(self) -> None:
+        report = self.service.create_issue_report(
+            self.student["id"],
+            {
+                "title": "Reservation modal did not open",
+                "category": "UI",
+                "description": "The reserve button on dashboard did not open the modal until refresh.",
+                "page_path": "/dashboard",
+            },
+        )
+
+        self.assertEqual(report["title"], "Reservation modal did not open")
+        self.assertEqual(report["category"], "UI")
+        self.assertEqual(report["page_path"], "/dashboard")
+        self.assertIsNotNone(self.db.issue_reports.find_one({"id": report["id"]}))
+
+        student_notifications = self.service.list_notifications(self.student["id"])
+        self.assertTrue(any(item["kind"] == "issue_sent" for item in student_notifications["items"]))
+
+        admin_notifications = self.service.list_notifications(self.admin["id"])
+        self.assertTrue(any(item["kind"] == "issue_reported" for item in admin_notifications["items"]))
 
     def test_login_purges_notifications_older_than_five_days(self) -> None:
         old_created_at = (datetime.now(timezone.utc) - timedelta(days=6)).replace(microsecond=0).isoformat()
